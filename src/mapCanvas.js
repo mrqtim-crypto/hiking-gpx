@@ -9,15 +9,22 @@ const TILE_SIZE = 256;
 const MIN_ZOOM = 10;
 const MAX_ZOOM = 18;
 
+function lonToNormX(lon) {
+  return (lon + 180) / 360;
+}
+
+function latToNormY(lat) {
+  const sinLat = Math.sin((lat * Math.PI) / 180);
+  const clamped = Math.max(-0.9999, Math.min(0.9999, sinLat));
+  return 0.5 - Math.log((1 + clamped) / (1 - clamped)) / (4 * Math.PI);
+}
+
 function lonToWorldX(lon, zoom) {
-  return ((lon + 180) / 360) * TILE_SIZE * Math.pow(2, zoom);
+  return lonToNormX(lon) * TILE_SIZE * Math.pow(2, zoom);
 }
 
 function latToWorldY(lat, zoom) {
-  const sinLat = Math.sin((lat * Math.PI) / 180);
-  const clamped = Math.max(-0.9999, Math.min(0.9999, sinLat));
-  const y = 0.5 - Math.log((1 + clamped) / (1 - clamped)) / (4 * Math.PI);
-  return y * TILE_SIZE * Math.pow(2, zoom);
+  return latToNormY(lat) * TILE_SIZE * Math.pow(2, zoom);
 }
 
 function worldXToLon(x, zoom) {
@@ -65,9 +72,23 @@ export class MapCanvasController {
     this.lastMouse = null;
 
     this.hitWaypoints = []; // 供點擊判斷
+    this._rafPending = false;
+    this._trackNormPts = [];
 
     this._bindEvents();
     this.resize();
+  }
+
+  /**
+   * 單幀合併重繪排程（Zero-Idle Loop：僅在需要更新時排程下一幀，兼顧 120Hz 絲滑與省電）
+   */
+  scheduleRender() {
+    if (this._rafPending) return;
+    this._rafPending = true;
+    requestAnimationFrame(() => {
+      this._rafPending = false;
+      this.render();
+    });
   }
 
   resize() {
@@ -77,36 +98,42 @@ export class MapCanvasController {
     this.dpr = Math.min(window.devicePixelRatio || 1, 3);
     this.canvas.width = Math.round(this.width * this.dpr);
     this.canvas.height = Math.round(this.height * this.dpr);
-    this.render();
+    this.scheduleRender();
   }
 
   setTrack(track) {
     this.track = track;
-    if (track) {
+    if (track && track.points) {
+      // 預先計算標準化 Web Mercator 座標，避免縮放拖曳時重複呼叫三角函數與對數
+      this._trackNormPts = track.points.map((p) => ({
+        nx: lonToNormX(p.lon),
+        ny: latToNormY(p.lat)
+      }));
       this.fitTrackBounds();
     } else {
-      this.render();
+      this._trackNormPts = [];
+      this.scheduleRender();
     }
   }
 
   setRudyMap(enabled) {
     this.showRudyMap = Boolean(enabled);
-    this.render();
+    this.scheduleRender();
   }
 
   setGps(gps) {
     this.gps = gps;
-    this.render();
+    this.scheduleRender();
   }
 
   setHeading(heading) {
     this.heading = heading;
-    this.render();
+    this.scheduleRender();
   }
 
   setPin(pin) {
     this.pin = pin;
-    this.render();
+    this.scheduleRender();
   }
 
   centerOn(lat, lon, targetZoom = null) {
@@ -115,7 +142,7 @@ export class MapCanvasController {
     if (targetZoom !== null) {
       this.zoom = Math.max(MIN_ZOOM, Math.min(MAX_ZOOM, targetZoom));
     }
-    this.render();
+    this.scheduleRender();
   }
 
   fitTrackBounds() {
@@ -133,7 +160,7 @@ export class MapCanvasController {
         break;
       }
     }
-    this.render();
+    this.scheduleRender();
   }
 
   latLonToScreen(lat, lon) {
@@ -163,7 +190,7 @@ export class MapCanvasController {
     const cy = latToWorldY(this.centerLat, this.zoom) - dy;
     this.centerLat = worldYToLat(cy, this.zoom);
     this.centerLon = worldXToLon(cx, this.zoom);
-    this.render();
+    this.scheduleRender();
   }
 
   zoomAt(newZoom, anchorX, anchorY) {
@@ -389,7 +416,7 @@ export class MapCanvasController {
             this.tileMemCache.delete(firstKey);
           }
           this.tileMemCache.set(key, img);
-          if (this.showRudyMap) this.render();
+          if (this.showRudyMap) this.scheduleRender();
         };
         img.onerror = () => URL.revokeObjectURL(objUrl);
         img.src = objUrl;
@@ -478,17 +505,39 @@ export class MapCanvasController {
   }
 
   _renderTrack(ctx) {
-    const pts = this.track.points;
+    const normPts = this._trackNormPts;
+    if (!normPts || normPts.length < 2) return;
+
+    const worldSize = TILE_SIZE * Math.pow(2, this.zoom);
+    const centerWx = lonToNormX(this.centerLon) * worldSize;
+    const centerWy = latToNormY(this.centerLat) * worldSize;
+    const halfW = this.width / 2;
+    const halfH = this.height / 2;
+
+    // 依像素距離進行高速抽稀（距離前一點 < 1.5px 則跳過），大幅提升超長 GPX 縮放流暢度
+    const screenPts = [];
+    let lastX = -9999;
+    let lastY = -9999;
+    const len = normPts.length;
+    for (let i = 0; i < len; i++) {
+      const x = halfW + normPts[i].nx * worldSize - centerWx;
+      const y = halfH + normPts[i].ny * worldSize - centerWy;
+      if (i === 0 || i === len - 1 || Math.abs(x - lastX) >= 1.5 || Math.abs(y - lastY) >= 1.5) {
+        screenPts.push(x, y);
+        lastX = x;
+        lastY = y;
+      }
+    }
+
     ctx.save();
     ctx.lineJoin = 'round';
     ctx.lineCap = 'round';
 
     const buildPath = () => {
       ctx.beginPath();
-      for (let i = 0; i < pts.length; i++) {
-        const { x, y } = this.latLonToScreen(pts[i].lat, pts[i].lon);
-        if (i === 0) ctx.moveTo(x, y);
-        else ctx.lineTo(x, y);
+      ctx.moveTo(screenPts[0], screenPts[1]);
+      for (let i = 2; i < screenPts.length; i += 2) {
+        ctx.lineTo(screenPts[i], screenPts[i + 1]);
       }
     };
 
@@ -505,17 +554,14 @@ export class MapCanvasController {
     ctx.stroke();
 
     // 起點與終點標記
-    const startPt = this.latLonToScreen(pts[0].lat, pts[0].lon);
-    const endPt = this.latLonToScreen(pts[pts.length - 1].lat, pts[pts.length - 1].lon);
-
     ctx.fillStyle = '#39ff14';
     ctx.beginPath();
-    ctx.arc(startPt.x, startPt.y, 4.5, 0, Math.PI * 2);
+    ctx.arc(screenPts[0], screenPts[1], 4.5, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.fillStyle = '#ff3b30';
     ctx.beginPath();
-    ctx.arc(endPt.x, endPt.y, 4.5, 0, Math.PI * 2);
+    ctx.arc(screenPts[screenPts.length - 2], screenPts[screenPts.length - 1], 4.5, 0, Math.PI * 2);
     ctx.fill();
 
     ctx.restore();

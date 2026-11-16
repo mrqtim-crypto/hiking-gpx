@@ -119,6 +119,10 @@ async function init() {
     eleCtrl.resize();
   });
 
+  // 鎖定 iOS Safari 雙指整頁縮放手勢，確保縮放只作用於地圖 Canvas
+  document.addEventListener('gesturestart', (e) => e.preventDefault(), { passive: false });
+  document.addEventListener('gesturechange', (e) => e.preventDefault(), { passive: false });
+
   // 極致省電：偵測關閉螢幕（鎖屏）或切換背景時立即關閉 GPS 與羅盤
   document.addEventListener('visibilitychange', () => {
     if (document.hidden && state.isTracking) {
