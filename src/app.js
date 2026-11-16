@@ -410,9 +410,6 @@ function setStatusPill(cls, text) {
 function setPinByDist(distKm) {
   if (!state.activeTrack) return;
   state.pinDistKm = distKm;
-  const sample = sampleTrackAtDist(distKm, state.activeTrack);
-  mapCtrl.setPin(sample);
-  eleCtrl.setPinDistKm(distKm);
   updatePinTooltip();
 }
 
@@ -426,18 +423,26 @@ function clearPin() {
 function updatePinTooltip() {
   if (state.pinDistKm === null || !state.activeTrack) {
     el.pinTooltip.classList.add('hidden');
+    mapCtrl.setPin(null);
     return;
   }
   const pinSample = sampleTrackAtDist(state.pinDistKm, state.activeTrack);
-  if (state.gpsProjection) {
+  const isNearTrack = Boolean(state.gpsProjection && state.gpsProjection.distanceM <= 200);
+  let badgeText = `${pinSample.ele}m`;
+
+  if (isNearTrack) {
     const deltaDist = pinSample.distKm - state.gpsProjection.distKm;
     const deltaEle = Math.round(pinSample.ele - (state.gps?.altitude ?? state.gpsProjection.ele));
     const distLabel = deltaDist >= 0 ? `距目前 ${deltaDist.toFixed(1)} km` : `在後方 ${Math.abs(deltaDist).toFixed(1)} km`;
     const eleSign = deltaEle >= 0 ? `+${deltaEle}m` : `${deltaEle}m`;
     el.pinTooltipText.textContent = `${distLabel} · 海拔 ${pinSample.ele}m (${eleSign})`;
+    badgeText = `${deltaDist >= 0 ? '+' : '-'}${Math.abs(deltaDist).toFixed(1)}km · ${pinSample.ele}m`;
   } else {
     el.pinTooltipText.textContent = `里程 ${pinSample.distKm.toFixed(1)} km · 海拔 ${pinSample.ele}m`;
   }
+
+  mapCtrl.setPin({ ...pinSample, badgeText });
+  eleCtrl.setPinDistKm(state.pinDistKm);
   el.pinTooltip.classList.remove('hidden');
 }
 

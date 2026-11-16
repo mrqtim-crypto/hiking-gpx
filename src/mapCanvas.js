@@ -642,6 +642,27 @@ export class MapCanvasController {
     ctx.beginPath();
     ctx.arc(x, y, 2.5, 0, Math.PI * 2);
     ctx.fill();
+
+    // 在橘球上方直接顯示同步距離／海拔小標籤
+    if (this.pin.badgeText) {
+      ctx.font = '700 11px -apple-system, BlinkMacSystemFont, "PingFang TC", sans-serif';
+      const tw = ctx.measureText(this.pin.badgeText).width + 12;
+      const bx = Math.max(6, Math.min(this.width - tw - 6, x - tw / 2));
+      const by = Math.max(6, y - 34);
+
+      ctx.fillStyle = 'rgba(18, 19, 22, 0.92)';
+      ctx.strokeStyle = 'rgba(255, 122, 0, 0.85)';
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      ctx.roundRect(bx, by, tw, 20, 6);
+      ctx.fill();
+      ctx.stroke();
+
+      ctx.fillStyle = '#ffffff';
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      ctx.fillText(this.pin.badgeText, bx + tw / 2, by + 10.5);
+    }
     ctx.restore();
   }
 }
