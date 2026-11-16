@@ -17,8 +17,7 @@ import {
   setMeta,
   downloadTilesForTrack,
   deleteTrackAndUnusedTiles,
-  getStorageUsageSummary,
-  clearAllTileCache
+  getStorageUsageSummary
 } from './storage.js';
 import { MapCanvasController } from './mapCanvas.js';
 import { ElevationCanvasController } from './elevationCanvas.js';
@@ -76,7 +75,6 @@ const el = {
   downloadBannerPct: document.getElementById('downloadBannerPct'),
   downloadBarFill: document.getElementById('downloadBarFill'),
   storageSummaryText: document.getElementById('storageSummaryText'),
-  btnClearAllTiles: document.getElementById('btnClearAllTiles'),
 
   wptModal: document.getElementById('wptModal'),
   btnCloseWptModal: document.getElementById('btnCloseWptModal'),
@@ -178,12 +176,6 @@ function bindUiEvents() {
     el.gpxFileInput.click();
   });
   el.btnCloseTrackModal.addEventListener('click', closeTrackModal);
-  el.btnClearAllTiles.addEventListener('click', async () => {
-    if (!confirm('確定要清空所有已下載的離線魯地圖圖磚嗎？（GPX 軌跡會保留）')) return;
-    await clearAllTileCache();
-    state.storedTracks = await getAllStoredTracks();
-    renderTrackList();
-  });
   el.trackModal.addEventListener('click', (e) => {
     if (e.target === el.trackModal) closeTrackModal();
   });
