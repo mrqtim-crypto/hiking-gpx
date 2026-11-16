@@ -501,6 +501,24 @@ async function toggleTrackDirection(trackId) {
   }
 }
 
+async function renameTrack(trackId) {
+  const raw = state.storedTracks.find((t) => t.id === trackId);
+  if (!raw) return;
+  const nextName = prompt('請輸入新的路線名稱：', raw.name);
+  if (nextName === null) return;
+  const trimmed = nextName.trim();
+  if (!trimmed || trimmed === raw.name) return;
+
+  raw.name = trimmed;
+  await saveStoredTrack(raw);
+  state.storedTracks = await getAllStoredTracks();
+  if (state.activeTrack && state.activeTrack.id === trackId) {
+    state.activeTrack.name = trimmed;
+    el.activeTrackName.textContent = trimmed;
+  }
+  renderTrackList();
+}
+
 async function removeTrack(trackId) {
   await deleteTrackAndUnusedTiles(trackId);
   state.storedTracks = await getAllStoredTracks();
@@ -569,6 +587,7 @@ async function renderTrackList() {
       </div>
       <div class="track-card-actions">
         <button class="chip-btn primary" data-act="use">${isActive ? '使用中' : '切換此路線'}</button>
+        <button class="chip-btn" data-act="rename">改名</button>
         <button class="chip-btn" data-act="reverse">反轉方向</button>
         <button class="chip-btn" data-act="tiles">${tileCount > 0 ? '更新離線地圖' : '下載離線地圖'}</button>
         <button class="chip-btn danger" data-act="delete">刪除</button>
@@ -578,6 +597,9 @@ async function renderTrackList() {
     card.querySelector('[data-act="use"]').addEventListener('click', async () => {
       await activateTrack(raw.id);
       closeTrackModal();
+    });
+    card.querySelector('[data-act="rename"]').addEventListener('click', async () => {
+      await renameTrack(raw.id);
     });
     card.querySelector('[data-act="reverse"]').addEventListener('click', async () => {
       await toggleTrackDirection(raw.id);
