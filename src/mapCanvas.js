@@ -60,6 +60,7 @@ export class MapCanvasController {
     this.lastPinchMid = null;
     this.dragStart = null;
     this.movedDistance = 0;
+    this.isDraggingPin = false;
     this.isMouseDragging = false;
     this.lastMouse = null;
 
@@ -190,7 +191,10 @@ export class MapCanvasController {
           this.movedDistance = 0;
           this.lastPinchDist = null;
           this.lastPinchMid = null;
+          const rect = this.canvas.getBoundingClientRect();
+          this.isDraggingPin = this._isNearPin(only.x - rect.left, only.y - rect.top);
         } else if (this.activeTouches.size === 2) {
+          this.isDraggingPin = false;
           const [p1, p2] = Array.from(this.activeTouches.values());
           this.lastPinchDist = Math.hypot(p2.x - p1.x, p2.y - p1.y);
           this.lastPinchMid = { x: (p1.x + p2.x) / 2, y: (p1.y + p2.y) / 2 };
@@ -208,10 +212,16 @@ export class MapCanvasController {
           if (this.activeTouches.has(t.identifier)) {
             const prev = this.activeTouches.get(t.identifier);
             if (this.activeTouches.size === 1) {
-              const dx = t.clientX - prev.x;
-              const dy = t.clientY - prev.y;
-              this.movedDistance += Math.hypot(dx, dy);
-              this.panBy(dx, dy);
+              if (this.isDraggingPin) {
+                const rect = this.canvas.getBoundingClientRect();
+                this._dragPinToScreen(t.clientX - rect.left, t.clientY - rect.top);
+                this.movedDistance += 10;
+              } else {
+                const dx = t.clientX - prev.x;
+                const dy = t.clientY - prev.y;
+                this.movedDistance += Math.hypot(dx, dy);
+                this.panBy(dx, dy);
+              }
             }
             this.activeTouches.set(t.identifier, { x: t.clientX, y: t.clientY });
           }
@@ -243,11 +253,12 @@ export class MapCanvasController {
         this.activeTouches.delete(t.identifier);
       }
       if (this.activeTouches.size === 0) {
-        if (this.movedDistance < 10 && e.changedTouches.length === 1) {
+        if (!this.isDraggingPin && this.movedDistance < 10 && e.changedTouches.length === 1) {
           const rect = this.canvas.getBoundingClientRect();
           const t = e.changedTouches[0];
           this._handleTap(t.clientX - rect.left, t.clientY - rect.top);
         }
+        this.isDraggingPin = false;
         this.lastPinchDist = null;
         this.lastPinchMid = null;
       } else if (this.activeTouches.size === 1) {
@@ -261,22 +272,32 @@ export class MapCanvasController {
 
     // Mouse fallback（桌面測試用）
     this.canvas.addEventListener('mousedown', (e) => {
+      const rect = this.canvas.getBoundingClientRect();
+      this.isDraggingPin = this._isNearPin(e.clientX - rect.left, e.clientY - rect.top);
       this.isMouseDragging = true;
       this.movedDistance = 0;
       this.lastMouse = { x: e.clientX, y: e.clientY };
     });
     window.addEventListener('mousemove', (e) => {
       if (!this.isMouseDragging || !this.lastMouse) return;
-      const dx = e.clientX - this.lastMouse.x;
-      const dy = e.clientY - this.lastMouse.y;
-      this.movedDistance += Math.hypot(dx, dy);
-      this.lastMouse = { x: e.clientX, y: e.clientY };
-      this.panBy(dx, dy);
+      if (this.isDraggingPin) {
+        const rect = this.canvas.getBoundingClientRect();
+        this._dragPinToScreen(e.clientX - rect.left, e.clientY - rect.top);
+        this.movedDistance += 10;
+      } else {
+        const dx = e.clientX - this.lastMouse.x;
+        const dy = e.clientY - this.lastMouse.y;
+        this.movedDistance += Math.hypot(dx, dy);
+        this.lastMouse = { x: e.clientX, y: e.clientY };
+        this.panBy(dx, dy);
+      }
     });
     window.addEventListener('mouseup', (e) => {
       if (!this.isMouseDragging) return;
       this.isMouseDragging = false;
-      if (this.movedDistance < 6) {
+      const wasDraggingPin = this.isDraggingPin;
+      this.isDraggingPin = false;
+      if (!wasDraggingPin && this.movedDistance < 6) {
         const rect = this.canvas.getBoundingClientRect();
         this._handleTap(e.clientX - rect.left, e.clientY - rect.top);
       }
@@ -291,6 +312,21 @@ export class MapCanvasController {
       },
       { passive: false }
     );
+  }
+
+  _isNearPin(sx, sy) {
+    if (!this.pin) return false;
+    const p = this.latLonToScreen(this.pin.lat, this.pin.lon);
+    return Math.hypot(p.x - sx, p.y - sy) <= 34;
+  }
+
+  _dragPinToScreen(sx, sy) {
+    if (!this.track) return;
+    const { lat, lon } = this.screenToLatLon(sx, sy);
+    const proj = projectPointToTrack(lat, lon, this.track.points);
+    if (this.callbacks.onSelectPinDist) {
+      this.callbacks.onSelectPinDist(proj.distKm);
+    }
   }
 
   _handleTap(sx, sy) {
@@ -588,22 +624,23 @@ export class MapCanvasController {
   _renderPin(ctx) {
     const { x, y } = this.latLonToScreen(this.pin.lat, this.pin.lon);
     ctx.save();
-    // 橘色水滴圖釘
-    ctx.translate(x, y);
+    // 可沿軌跡滑動的發光橘色目標游標
+    ctx.fillStyle = 'rgba(255, 122, 0, 0.25)';
+    ctx.beginPath();
+    ctx.arc(x, y, 16, 0, Math.PI * 2);
+    ctx.fill();
+
     ctx.fillStyle = '#ff7a00';
     ctx.strokeStyle = '#ffffff';
-    ctx.lineWidth = 1.5;
+    ctx.lineWidth = 2;
     ctx.beginPath();
-    ctx.moveTo(0, 0);
-    ctx.bezierCurveTo(-9, -11, -11, -18, 0, -24);
-    ctx.bezierCurveTo(11, -18, 9, -11, 0, 0);
-    ctx.closePath();
+    ctx.arc(x, y, 8, 0, Math.PI * 2);
     ctx.fill();
     ctx.stroke();
 
     ctx.fillStyle = '#ffffff';
     ctx.beginPath();
-    ctx.arc(0, -15, 3, 0, Math.PI * 2);
+    ctx.arc(x, y, 2.5, 0, Math.PI * 2);
     ctx.fill();
     ctx.restore();
   }
