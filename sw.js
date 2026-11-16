@@ -1,4 +1,4 @@
-const APP_CACHE = 'hiking-gpx-app-v10';
+const APP_CACHE = 'hiking-gpx-app-v11';
 const TILE_CACHE = 'rudy-tiles-v1';
 
 const APP_ASSETS = [

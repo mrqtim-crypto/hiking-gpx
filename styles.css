@@ -46,7 +46,7 @@ body {
 /* 頂部資訊面板 */
 .top-panel {
   flex-shrink: 0;
-  padding: calc(env(safe-area-inset-top, 0px) + 6px) 10px 6px;
+  padding: 8px 10px 6px;
   background-color: var(--bg-oled);
   border-bottom: 1px solid var(--border-subtle);
   z-index: 20;
