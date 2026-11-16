@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="zh-Hant">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
+  <meta name="theme-color" content="#000000" />
+  <meta name="apple-mobile-web-app-capable" content="yes" />
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+  <meta name="apple-mobile-web-app-title" content="山行 GPX" />
+  <meta name="format-detection" content="telephone=no" />
+  <title>山行 GPX — 極簡省電軌跡</title>
+  <link rel="manifest" href="./manifest.webmanifest" />
+  <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+  <link rel="stylesheet" href="./styles.css" />
+</head>
+<body>
+  <div id="app">
+    <!-- 頂部精簡狀態與數據面板 -->
+    <header class="top-panel">
+      <div class="status-row">
+        <div class="status-left">
+          <div id="gpsStatusPill" class="status-pill status-idle">
+            <span class="status-dot"></span>
+            <span id="gpsStatusText">待機中</span>
+          </div>
+          <div id="progressBadge" class="progress-badge">已完成 <span id="progressPctText">0%</span></div>
+        </div>
+        <div class="status-actions">
+          <button id="btnTrackList" class="icon-btn" type="button" aria-label="軌跡清單">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <path d="M8 6h13M8 12h13M8 18h13M3 6h.01M3 12h.01M3 18h.01"/>
+            </svg>
+            <span>軌跡清單</span>
+          </button>
+          <button id="btnRudyMap" class="icon-btn" type="button" aria-label="魯地圖切換">
+            <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+              <polygon points="1 6 1 22 8 18 16 22 23 18 23 2 16 6 8 2 1 6"/>
+              <line x1="8" y1="2" x2="8" y2="18"/>
+              <line x1="16" y1="6" x2="16" y2="22"/>
+            </svg>
+            <span>魯地圖</span>
+          </button>
+        </div>
+      </div>
+
+      <div class="metrics-card">
+        <div class="metrics-grid">
+          <div class="metric-item">
+            <div class="metric-label">目前海拔</div>
+            <div class="metric-value"><span id="valCurEle">--</span><span class="unit">m</span></div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">剩餘距離</div>
+            <div class="metric-value"><span id="valRemDist">--</span><span class="unit">km</span></div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">剩餘爬升</div>
+            <div class="metric-value"><span id="valRemGain">--</span><span class="unit">m</span></div>
+          </div>
+          <div class="metric-item">
+            <div class="metric-label">剩餘下降</div>
+            <div class="metric-value"><span id="valRemLoss">--</span><span class="unit">m</span></div>
+          </div>
+        </div>
+        <div class="progress-bar-track" aria-hidden="true">
+          <div id="progressBarFill" class="progress-bar-fill" style="width: 0%"></div>
+        </div>
+      </div>
+    </header>
+
+    <!-- 中央主地圖區 -->
+    <main class="map-stage" id="mapStage">
+      <canvas id="mapCanvas"></canvas>
+
+      <!-- 空狀態引導（尚未載入軌跡時顯示） -->
+      <div id="emptyState" class="empty-state">
+        <div class="empty-title">尚未載入 GPX 軌跡</div>
+        <div class="empty-desc">支援從 iPhone「檔案」匯入健行筆記 GPX，自動下載矩形範圍離線魯地圖。</div>
+        <div class="empty-actions">
+          <button id="btnEmptyImport" class="primary-btn" type="button">匯入 GPX 軌跡</button>
+          <button id="btnLoadDemo" class="secondary-btn" type="button">載入示範路線測試</button>
+        </div>
+      </div>
+
+      <!-- 當前路線名稱浮標 -->
+      <div id="activeTrackBadge" class="active-track-badge hidden">
+        <span id="activeTrackName">--</span>
+        <span id="activeTrackDir" class="dir-tag">正向</span>
+      </div>
+
+      <!-- 圖釘浮動資訊氣泡 -->
+      <div id="pinTooltip" class="pin-tooltip hidden">
+        <span id="pinTooltipText">--</span>
+        <button id="btnClearPin" class="pin-close" type="button" aria-label="清除圖釘">✕</button>
+      </div>
+
+      <!-- 右下角定位按鈕 -->
+      <button id="btnLocate" class="locate-fab" type="button" aria-label="開啟定位">
+        <svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2">
+          <circle cx="12" cy="12" r="3"/>
+          <path d="M12 2v3M12 19v3M2 12h3M19 12h3"/>
+          <circle cx="12" cy="12" r="7" stroke-opacity="0.45"/>
+        </svg>
+        <span id="locateBtnText">定位</span>
+      </button>
+    </main>
+
+    <!-- 底部固定 25% XY 海拔距離圖 -->
+    <section class="elevation-panel" id="elevationPanel" aria-label="距離海拔圖">
+      <div class="elevation-header">
+        <span class="ele-title">距離 / 海拔剖面</span>
+        <span id="eleHint" class="ele-hint">點擊或滑動圖表可放置圖釘</span>
+      </div>
+      <div class="elevation-canvas-wrap">
+        <canvas id="elevationCanvas"></canvas>
+      </div>
+    </section>
+  </div>
+
+  <!-- 軌跡管理清單彈窗 -->
+  <div id="trackModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="trackModalTitle">
+    <div class="modal-sheet">
+      <div class="modal-header">
+        <h2 id="trackModalTitle">軌跡清單與離線地圖</h2>
+        <button id="btnCloseTrackModal" class="close-btn" type="button" aria-label="關閉">✕</button>
+      </div>
+
+      <div class="modal-toolbar">
+        <label class="import-label" for="gpxFileInput">
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2">
+            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/>
+            <polyline points="17 8 12 3 7 8"/>
+            <line x1="12" y1="3" x2="12" y2="15"/>
+          </svg>
+          <span>從檔案匯入 GPX（可多選）</span>
+        </label>
+        <!-- 放寬 accept 以確保 iPhone Safari 檔案 App 可點選 .gpx -->
+        <input id="gpxFileInput" type="file" accept=".gpx,.xml,application/gpx+xml,text/xml,*/*" multiple class="hidden-input" />
+      </div>
+
+      <div id="downloadBanner" class="download-banner hidden">
+        <div class="download-info">
+          <span id="downloadBannerText">正在預載離線魯地圖...</span>
+          <span id="downloadBannerPct">0%</span>
+        </div>
+        <div class="download-bar-track">
+          <div id="downloadBarFill" class="download-bar-fill" style="width: 0%"></div>
+        </div>
+      </div>
+
+      <div id="trackListContainer" class="track-list"></div>
+
+      <div class="modal-footer-note">
+        匯入軌跡會自動下載「外接矩形＋外擴 2 km」的魯地圖圖磚（Z12～Z15）；刪除軌跡會自動清理專屬圖磚並保留共用區域。
+      </div>
+    </div>
+  </div>
+
+  <!-- 航點詳細資訊彈窗 -->
+  <div id="wptModal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
+    <div class="wpt-card">
+      <div class="wpt-card-header">
+        <span id="wptCardIcon" class="wpt-card-icon">📍</span>
+        <div class="wpt-card-titles">
+          <div id="wptCardName" class="wpt-card-name">--</div>
+          <div id="wptCardMeta" class="wpt-card-meta">--</div>
+        </div>
+        <button id="btnCloseWptModal" class="close-btn" type="button" aria-label="關閉">✕</button>
+      </div>
+      <div id="wptCardDesc" class="wpt-card-desc"></div>
+      <div class="wpt-card-actions">
+        <button id="btnPinAtWpt" class="primary-btn small" type="button">在此處插圖釘</button>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="./src/app.js"></script>
+</body>
+</html>

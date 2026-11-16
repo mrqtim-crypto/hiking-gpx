@@ -1,0 +1,684 @@
+:root {
+  --bg-oled: #000000;
+  --bg-panel: #0a0a0c;
+  --bg-card: #121316;
+  --border-subtle: rgba(255, 255, 255, 0.12);
+  --text-primary: #f5f5f7;
+  --text-secondary: #8e8e93;
+  --accent-green: #39ff14;
+  --accent-green-dim: rgba(57, 255, 20, 0.16);
+  --accent-red: #ff3b30;
+  --accent-red-dim: rgba(255, 59, 48, 0.18);
+  --accent-cyan: #00e5ff;
+  --accent-orange: #ff7a00;
+  --accent-amber: #ffcc00;
+}
+
+* {
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+  user-select: none;
+  -webkit-user-select: none;
+}
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  height: 100dvh;
+  overflow: hidden;
+  overscroll-behavior: none;
+  background-color: var(--bg-oled);
+  color: var(--text-primary);
+  font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "PingFang TC", "Noto Sans TC", sans-serif;
+  touch-action: manipulation;
+}
+
+#app {
+  display: flex;
+  flex-direction: column;
+  width: 100%;
+  height: 100dvh;
+  background-color: var(--bg-oled);
+}
+
+/* 頂部資訊面板 */
+.top-panel {
+  flex-shrink: 0;
+  padding: calc(env(safe-area-inset-top, 0px) + 6px) 10px 6px;
+  background-color: var(--bg-oled);
+  border-bottom: 1px solid var(--border-subtle);
+  z-index: 20;
+}
+
+.status-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 6px;
+  margin-bottom: 6px;
+}
+
+.status-left {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  flex: 1;
+}
+
+.status-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 600;
+  background: #16181c;
+  border: 1px solid var(--border-subtle);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.status-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  flex-shrink: 0;
+  background: var(--text-secondary);
+}
+
+.status-pill.status-ok {
+  border-color: rgba(57, 255, 20, 0.45);
+  color: #b7ffaa;
+}
+.status-pill.status-ok .status-dot {
+  background: var(--accent-green);
+  box-shadow: 0 0 6px var(--accent-green);
+}
+
+.status-pill.status-warn {
+  border-color: rgba(255, 204, 0, 0.5);
+  color: #ffe580;
+}
+.status-pill.status-warn .status-dot {
+  background: var(--accent-amber);
+}
+
+.status-pill.status-off {
+  border-color: rgba(255, 59, 48, 0.55);
+  color: #ff9f99;
+}
+.status-pill.status-off .status-dot {
+  background: var(--accent-red);
+  box-shadow: 0 0 6px var(--accent-red);
+}
+
+.status-pill.status-searching .status-dot {
+  background: var(--accent-cyan);
+}
+
+/* 紅色完成百分比徽章 */
+.progress-badge {
+  display: inline-flex;
+  align-items: center;
+  padding: 4px 8px;
+  border-radius: 999px;
+  font-size: 12px;
+  font-weight: 700;
+  color: #ffffff;
+  background: var(--accent-red);
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
+.status-actions {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.icon-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 5px 9px;
+  border-radius: 8px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.icon-btn.active {
+  border-color: var(--accent-green);
+  background: var(--accent-green-dim);
+  color: #d6ffce;
+}
+
+/* 單列四大數據與紅色進度條 */
+.metrics-card {
+  background: var(--bg-panel);
+  border: 1px solid var(--border-subtle);
+  border-radius: 10px;
+  padding: 6px 8px 5px;
+}
+
+.metrics-grid {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 4px;
+  text-align: center;
+}
+
+.metric-item {
+  min-width: 0;
+}
+
+.metric-label {
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.2;
+}
+
+.metric-value {
+  font-size: 17px;
+  font-weight: 700;
+  color: var(--text-primary);
+  font-variant-numeric: tabular-nums;
+  line-height: 1.25;
+  margin-top: 1px;
+}
+
+.metric-value .unit {
+  font-size: 11px;
+  font-weight: 500;
+  color: var(--text-secondary);
+  margin-left: 2px;
+}
+
+.progress-bar-track {
+  margin-top: 5px;
+  width: 100%;
+  height: 4px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.progress-bar-fill {
+  height: 100%;
+  background: var(--accent-red);
+  border-radius: 999px;
+  transition: width 0.25s ease;
+}
+
+/* 中央主地圖區 */
+.map-stage {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  background-color: var(--bg-oled);
+  overflow: hidden;
+  touch-action: none;
+}
+
+#mapCanvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+.empty-state {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 24px;
+  text-align: center;
+  background: rgba(0, 0, 0, 0.86);
+  z-index: 5;
+}
+
+.empty-state.hidden {
+  display: none;
+}
+
+.empty-title {
+  font-size: 18px;
+  font-weight: 700;
+  margin-bottom: 8px;
+}
+
+.empty-desc {
+  font-size: 13px;
+  color: var(--text-secondary);
+  max-width: 280px;
+  line-height: 1.5;
+  margin-bottom: 18px;
+}
+
+.empty-actions {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: 100%;
+  max-width: 240px;
+}
+
+.primary-btn {
+  padding: 11px 16px;
+  border-radius: 10px;
+  border: none;
+  background: var(--accent-green);
+  color: #000000;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.primary-btn.small {
+  padding: 8px 14px;
+  font-size: 13px;
+}
+
+.secondary-btn {
+  padding: 10px 16px;
+  border-radius: 10px;
+  border: 1px solid var(--border-subtle);
+  background: var(--bg-card);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.active-track-badge {
+  position: absolute;
+  top: 8px;
+  left: 10px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border-radius: 8px;
+  background: rgba(10, 10, 12, 0.8);
+  border: 1px solid var(--border-subtle);
+  font-size: 12px;
+  color: var(--text-primary);
+  pointer-events: none;
+  max-width: calc(100% - 20px);
+}
+
+.active-track-badge #activeTrackName {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.dir-tag {
+  font-size: 10px;
+  padding: 1px 5px;
+  border-radius: 4px;
+  background: rgba(255, 255, 255, 0.14);
+  color: var(--text-secondary);
+  flex-shrink: 0;
+}
+
+.dir-tag.reversed {
+  background: rgba(255, 122, 0, 0.25);
+  color: #ffb36b;
+}
+
+/* 圖釘氣泡 */
+.pin-tooltip {
+  position: absolute;
+  top: 38px;
+  left: 50%;
+  transform: translateX(-50%);
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 6px 10px;
+  border-radius: 10px;
+  background: rgba(18, 19, 22, 0.92);
+  border: 1px solid rgba(255, 122, 0, 0.65);
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  white-space: nowrap;
+  z-index: 8;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.6);
+}
+
+.pin-close {
+  border: none;
+  background: rgba(255, 255, 255, 0.12);
+  color: var(--text-primary);
+  width: 20px;
+  height: 20px;
+  border-radius: 50%;
+  font-size: 11px;
+  cursor: pointer;
+}
+
+/* 右下角定位按鈕 */
+.locate-fab {
+  position: absolute;
+  right: 12px;
+  bottom: 12px;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 10px 14px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border-subtle);
+  background: rgba(14, 15, 18, 0.9);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  z-index: 10;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.7);
+}
+
+.locate-fab.active {
+  border-color: var(--accent-green);
+  color: var(--accent-green);
+  background: rgba(10, 24, 10, 0.92);
+  box-shadow: 0 0 14px rgba(57, 255, 20, 0.28);
+}
+
+/* 底部固定 25% 高度 XY 海拔距離圖 */
+.elevation-panel {
+  flex: 0 0 25dvh;
+  min-height: 148px;
+  display: flex;
+  flex-direction: column;
+  background: var(--bg-panel);
+  border-top: 1px solid var(--border-subtle);
+  padding: 5px 8px calc(env(safe-area-inset-bottom, 0px) + 4px);
+  z-index: 15;
+}
+
+.elevation-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  margin-bottom: 3px;
+  flex-shrink: 0;
+}
+
+.ele-title {
+  color: var(--text-primary);
+  font-weight: 600;
+}
+
+.ele-hint {
+  color: var(--text-secondary);
+}
+
+.elevation-canvas-wrap {
+  position: relative;
+  flex: 1 1 auto;
+  min-height: 0;
+  width: 100%;
+  touch-action: none;
+}
+
+#elevationCanvas {
+  display: block;
+  width: 100%;
+  height: 100%;
+  touch-action: none;
+}
+
+/* 彈窗系統 */
+.hidden {
+  display: none !important;
+}
+
+.modal-backdrop {
+  position: fixed;
+  inset: 0;
+  background: rgba(0, 0, 0, 0.75);
+  z-index: 50;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+}
+
+.modal-sheet {
+  width: 100%;
+  max-width: 540px;
+  max-height: 85dvh;
+  display: flex;
+  flex-direction: column;
+  background: #101114;
+  border-top: 1px solid var(--border-subtle);
+  border-radius: 18px 18px 0 0;
+  padding: 14px 14px calc(env(safe-area-inset-bottom, 0px) + 16px);
+}
+
+.modal-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 12px;
+}
+
+.modal-header h2 {
+  margin: 0;
+  font-size: 17px;
+}
+
+.close-btn {
+  width: 30px;
+  height: 30px;
+  border-radius: 50%;
+  border: 1px solid var(--border-subtle);
+  background: #1c1e22;
+  color: var(--text-primary);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.modal-toolbar {
+  margin-bottom: 10px;
+}
+
+.import-label {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  width: 100%;
+  padding: 11px;
+  border-radius: 10px;
+  background: var(--accent-green);
+  color: #000000;
+  font-size: 14px;
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.hidden-input {
+  display: none;
+}
+
+.download-banner {
+  background: #181a1f;
+  border: 1px solid rgba(0, 229, 255, 0.35);
+  border-radius: 10px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+}
+
+.download-info {
+  display: flex;
+  justify-content: space-between;
+  font-size: 12px;
+  margin-bottom: 5px;
+}
+
+.download-bar-track {
+  width: 100%;
+  height: 5px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, 0.12);
+  overflow: hidden;
+}
+
+.download-bar-fill {
+  height: 100%;
+  background: var(--accent-cyan);
+  transition: width 0.2s ease;
+}
+
+.track-list {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  -webkit-overflow-scrolling: touch;
+}
+
+.track-card {
+  background: #17191d;
+  border: 1px solid var(--border-subtle);
+  border-radius: 12px;
+  padding: 10px 12px;
+}
+
+.track-card.active {
+  border-color: var(--accent-green);
+  background: rgba(57, 255, 20, 0.06);
+}
+
+.track-card-top {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.track-name {
+  font-size: 15px;
+  font-weight: 700;
+  color: var(--text-primary);
+  word-break: break-word;
+}
+
+.track-stats {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 3px;
+}
+
+.track-tile-status {
+  font-size: 11px;
+  color: var(--accent-cyan);
+  margin-top: 4px;
+}
+
+.track-card-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 9px;
+}
+
+.chip-btn {
+  padding: 5px 10px;
+  border-radius: 7px;
+  border: 1px solid var(--border-subtle);
+  background: #23262c;
+  color: var(--text-primary);
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.chip-btn.primary {
+  background: var(--accent-green-dim);
+  border-color: rgba(57, 255, 20, 0.45);
+  color: #c8ffc0;
+}
+
+.chip-btn.danger {
+  background: var(--accent-red-dim);
+  border-color: rgba(255, 59, 48, 0.4);
+  color: #ffb2ad;
+}
+
+.modal-footer-note {
+  margin-top: 10px;
+  font-size: 11px;
+  color: var(--text-secondary);
+  line-height: 1.45;
+}
+
+/* 航點詳情卡片 */
+.wpt-card {
+  width: calc(100% - 28px);
+  max-width: 400px;
+  margin: auto;
+  background: #14161a;
+  border: 1px solid var(--border-subtle);
+  border-radius: 16px;
+  padding: 14px;
+}
+
+.wpt-card-header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.wpt-card-icon {
+  font-size: 22px;
+}
+
+.wpt-card-titles {
+  flex: 1;
+  min-width: 0;
+}
+
+.wpt-card-name {
+  font-size: 16px;
+  font-weight: 700;
+}
+
+.wpt-card-meta {
+  font-size: 12px;
+  color: var(--text-secondary);
+  margin-top: 2px;
+}
+
+.wpt-card-desc {
+  margin-top: 10px;
+  font-size: 13px;
+  color: #d1d1d6;
+  line-height: 1.5;
+  max-height: 160px;
+  overflow-y: auto;
+  white-space: pre-wrap;
+}
+
+.wpt-card-actions {
+  margin-top: 12px;
+  display: flex;
+  justify-content: flex-end;
+}

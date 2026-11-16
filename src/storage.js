@@ -1,0 +1,217 @@
+/**
+ * 本機離線儲存（IndexedDB 軌跡管理 + Cache API 矩形範圍魯地圖圖磚管理）
+ */
+
+const DB_NAME = 'hiking-gpx-db';
+const DB_VERSION = 1;
+const STORE_TRACKS = 'tracks';
+const STORE_META = 'meta';
+export const TILE_CACHE_NAME = 'rudy-tiles-v1';
+export const RUDY_TILE_URL = 'https://tile.happyman.idv.tw/map/rudy/{z}/{x}/{y}.png';
+
+function openDb() {
+  return new Promise((resolve, reject) => {
+    const req = indexedDB.open(DB_NAME, DB_VERSION);
+    req.onupgradeneeded = () => {
+      const db = req.result;
+      if (!db.objectStoreNames.contains(STORE_TRACKS)) {
+        db.createObjectStore(STORE_TRACKS, { keyPath: 'id' });
+      }
+      if (!db.objectStoreNames.contains(STORE_META)) {
+        db.createObjectStore(STORE_META, { keyPath: 'key' });
+      }
+    };
+    req.onsuccess = () => resolve(req.result);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function getAllStoredTracks() {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_TRACKS, 'readonly');
+    const req = tx.objectStore(STORE_TRACKS).getAll();
+    req.onsuccess = () => {
+      const list = req.result || [];
+      list.sort((a, b) => (b.createdAt || 0) - (a.createdAt || 0));
+      resolve(list);
+    };
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function saveStoredTrack(track) {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_TRACKS, 'readwrite');
+    tx.objectStore(STORE_TRACKS).put(track);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+export async function getMeta(key) {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_META, 'readonly');
+    const req = tx.objectStore(STORE_META).get(key);
+    req.onsuccess = () => resolve(req.result ? req.result.value : null);
+    req.onerror = () => reject(req.error);
+  });
+}
+
+export async function setMeta(key, value) {
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_META, 'readwrite');
+    tx.objectStore(STORE_META).put({ key, value });
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
+
+/**
+ * 經緯度轉 Web Mercator 圖磚座標
+ */
+export function latLonToTile(lat, lon, z) {
+  const n = Math.pow(2, z);
+  const x = Math.floor(((lon + 180) / 360) * n);
+  const latRad = (lat * Math.PI) / 180;
+  const y = Math.floor(((1 - Math.log(Math.tan(latRad) + 1 / Math.cos(latRad)) / Math.PI) / 2) * n);
+  return {
+    x: Math.max(0, Math.min(n - 1, x)),
+    y: Math.max(0, Math.min(n - 1, y))
+  };
+}
+
+export function formatTileUrl(z, x, y) {
+  return RUDY_TILE_URL.replace('{z}', z).replace('{x}', x).replace('{y}', y);
+}
+
+/**
+ * 計算整條軌跡「外接矩形＋四週外擴 paddingKm」的所有魯地圖圖磚 URL
+ */
+export function computeBoundingBoxTiles(points, paddingKm = 2.0) {
+  let minLat = Infinity;
+  let maxLat = -Infinity;
+  let minLon = Infinity;
+  let maxLon = -Infinity;
+
+  for (const p of points) {
+    if (p.lat < minLat) minLat = p.lat;
+    if (p.lat > maxLat) maxLat = p.lat;
+    if (p.lon < minLon) minLon = p.lon;
+    if (p.lon > maxLon) maxLon = p.lon;
+  }
+
+  const midLat = (minLat + maxLat) / 2;
+  const dLat = paddingKm / 111.32;
+  const dLon = paddingKm / (111.32 * Math.max(0.2, Math.cos((midLat * Math.PI) / 180)));
+
+  const padMinLat = Math.max(-85, minLat - dLat);
+  const padMaxLat = Math.min(85, maxLat + dLat);
+  const padMinLon = Math.max(-180, minLon - dLon);
+  const padMaxLon = Math.min(180, maxLon + dLon);
+
+  const MAX_TILES = 1400; // 安全上限，避免超長跨區路線塞爆 iOS PWA 配額
+  const urls = [];
+
+  for (const z of [12, 13, 14, 15, 16]) {
+    const topLeft = latLonToTile(padMaxLat, padMinLon, z);
+    const botRight = latLonToTile(padMinLat, padMaxLon, z);
+    const count = (botRight.x - topLeft.x + 1) * (botRight.y - topLeft.y + 1);
+
+    // 若加上 Z16 會超過安全上限，則僅保留到 Z15 並仍保有完整大矩形
+    if (z === 16 && urls.length + count > MAX_TILES) {
+      break;
+    }
+
+    for (let x = topLeft.x; x <= botRight.x; x++) {
+      for (let y = topLeft.y; y <= botRight.y; y++) {
+        urls.push(formatTileUrl(z, x, y));
+        if (urls.length >= MAX_TILES) return urls;
+      }
+    }
+  }
+
+  return urls;
+}
+
+/**
+ * 下載矩形範圍內的魯地圖圖磚至 Cache API
+ */
+export async function downloadTilesForTrack(track, onProgress) {
+  const urls = computeBoundingBoxTiles(track.points, 2.0);
+  const cache = await caches.open(TILE_CACHE_NAME);
+
+  let done = 0;
+  let totalBytes = 0;
+  const total = urls.length;
+  const CONCURRENCY = 4;
+  let cursor = 0;
+
+  async function worker() {
+    while (cursor < total) {
+      const idx = cursor++;
+      const url = urls[idx];
+      try {
+        const existing = await cache.match(url);
+        if (existing) {
+          const blob = await existing.clone().blob();
+          totalBytes += blob.size;
+        } else {
+          const res = await fetch(url, { mode: 'cors' });
+          if (res.ok) {
+            const clone = res.clone();
+            const blob = await clone.blob();
+            totalBytes += blob.size;
+            await cache.put(url, res);
+          }
+        }
+      } catch {
+        // 忽略單張圖磚網路失敗，不中斷整體下載
+      } finally {
+        done++;
+        if (onProgress) onProgress(done, total);
+      }
+    }
+  }
+
+  const workers = Array.from({ length: Math.min(CONCURRENCY, total) }, () => worker());
+  await Promise.all(workers);
+
+  track.tileKeys = urls;
+  track.tileBytes = totalBytes;
+  await saveStoredTrack(track);
+  return { count: urls.length, bytes: totalBytes };
+}
+
+/**
+ * 刪除軌跡，並自動刪除「僅屬於該軌跡、未被其他軌跡共用」的離線圖磚
+ */
+export async function deleteTrackAndUnusedTiles(trackId) {
+  const allTracks = await getAllStoredTracks();
+  const target = allTracks.find((t) => t.id === trackId);
+  if (!target) return;
+
+  const sharedSet = new Set();
+  for (const t of allTracks) {
+    if (t.id !== trackId && Array.isArray(t.tileKeys)) {
+      for (const k of t.tileKeys) sharedSet.add(k);
+    }
+  }
+
+  if (Array.isArray(target.tileKeys) && target.tileKeys.length > 0 && 'caches' in window) {
+    const cache = await caches.open(TILE_CACHE_NAME);
+    const toDelete = target.tileKeys.filter((k) => !sharedSet.has(k));
+    await Promise.all(toDelete.map((url) => cache.delete(url)));
+  }
+
+  const db = await openDb();
+  return new Promise((resolve, reject) => {
+    const tx = db.transaction(STORE_TRACKS, 'readwrite');
+    tx.objectStore(STORE_TRACKS).delete(trackId);
+    tx.oncomplete = () => resolve();
+    tx.onerror = () => reject(tx.error);
+  });
+}
