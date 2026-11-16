@@ -538,8 +538,8 @@ function closeTrackModal() {
   el.trackModal.classList.add('hidden');
 }
 
-function renderTrackList() {
-  updateStorageSummary();
+async function renderTrackList() {
+  const summary = await updateStorageSummary();
   const container = el.trackListContainer;
   container.innerHTML = '';
 
@@ -552,7 +552,17 @@ function renderTrackList() {
     const built = buildTrackData(raw);
     const isActive = state.activeTrack && state.activeTrack.id === raw.id;
     const tileCount = Array.isArray(raw.tileKeys) ? raw.tileKeys.length : 0;
-    const tileMb = raw.tileBytes ? (raw.tileBytes / (1024 * 1024)).toFixed(1) : '0.0';
+
+    let tileStatusText = '尚未預載離線魯地圖';
+    if (tileCount > 0) {
+      if (summary.quotaMb && summary.quotaMb > 0) {
+        const trackMb = (raw.tileBytes || 0) / (1024 * 1024);
+        const trackPct = Math.max(0.1, (trackMb / summary.quotaMb) * 100);
+        tileStatusText = `已預載離線地圖（約佔可用空間 ${trackPct.toFixed(1)}%）`;
+      } else {
+        tileStatusText = '已預載離線地圖';
+      }
+    }
 
     const card = document.createElement('div');
     card.className = `track-card ${isActive ? 'active' : ''}`;
@@ -561,9 +571,7 @@ function renderTrackList() {
         <div>
           <div class="track-name">${escapeHtml(built.name)}</div>
           <div class="track-stats">${built.totalDistKm.toFixed(1)} km · 爬升 +${built.totalGain}m · 下降 -${built.totalLoss}m</div>
-          <div class="track-tile-status">${
-            tileCount > 0 ? `已預載矩形魯地圖：${tileCount} 張（約 ${tileMb} MB）` : '尚未預載離線魯地圖'
-          }</div>
+          <div class="track-tile-status">${tileStatusText}</div>
         </div>
         <span class="dir-tag ${built.reversed ? 'reversed' : ''}">${built.reversed ? '反向' : '正向'}</span>
       </div>
@@ -602,11 +610,12 @@ function renderTrackList() {
 async function updateStorageSummary() {
   const s = await getStorageUsageSummary(state.storedTracks);
   if (s.usageMb !== null && s.quotaMb !== null && s.quotaMb > 0) {
-    const pct = Math.min(100, Math.round((s.usageMb / s.quotaMb) * 100));
-    el.storageSummaryText.textContent = `已用 ${s.usageMb.toFixed(1)} MB（${s.uniqueTilesCount} 張圖磚 · 配額 ${pct}%）`;
+    const pct = Math.min(100, (s.usageMb / s.quotaMb) * 100);
+    el.storageSummaryText.textContent = `離線空間總計已佔用 ${pct < 1 ? pct.toFixed(1) : Math.round(pct)}%`;
   } else {
-    el.storageSummaryText.textContent = `已預載 ${s.uniqueTilesCount} 張圖磚（約 ${s.approxTilesMb.toFixed(1)} MB）`;
+    el.storageSummaryText.textContent = `離線空間已就緒`;
   }
+  return s;
 }
 
 function openWaypointModal(wpt) {
