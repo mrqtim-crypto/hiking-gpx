@@ -16,7 +16,9 @@ import {
   getMeta,
   setMeta,
   downloadTilesForTrack,
-  deleteTrackAndUnusedTiles
+  deleteTrackAndUnusedTiles,
+  getStorageUsageSummary,
+  clearAllTileCache
 } from './storage.js';
 import { MapCanvasController } from './mapCanvas.js';
 import { ElevationCanvasController } from './elevationCanvas.js';
@@ -73,6 +75,8 @@ const el = {
   downloadBannerText: document.getElementById('downloadBannerText'),
   downloadBannerPct: document.getElementById('downloadBannerPct'),
   downloadBarFill: document.getElementById('downloadBarFill'),
+  storageSummaryText: document.getElementById('storageSummaryText'),
+  btnClearAllTiles: document.getElementById('btnClearAllTiles'),
 
   wptModal: document.getElementById('wptModal'),
   btnCloseWptModal: document.getElementById('btnCloseWptModal'),
@@ -174,6 +178,12 @@ function bindUiEvents() {
     el.gpxFileInput.click();
   });
   el.btnCloseTrackModal.addEventListener('click', closeTrackModal);
+  el.btnClearAllTiles.addEventListener('click', async () => {
+    if (!confirm('確定要清空所有已下載的離線魯地圖圖磚嗎？（GPX 軌跡會保留）')) return;
+    await clearAllTileCache();
+    state.storedTracks = await getAllStoredTracks();
+    renderTrackList();
+  });
   el.trackModal.addEventListener('click', (e) => {
     if (e.target === el.trackModal) closeTrackModal();
   });
@@ -529,6 +539,7 @@ function closeTrackModal() {
 }
 
 function renderTrackList() {
+  updateStorageSummary();
   const container = el.trackListContainer;
   container.innerHTML = '';
 
@@ -585,6 +596,16 @@ function renderTrackList() {
     });
 
     container.appendChild(card);
+  }
+}
+
+async function updateStorageSummary() {
+  const s = await getStorageUsageSummary(state.storedTracks);
+  if (s.usageMb !== null && s.quotaMb !== null && s.quotaMb > 0) {
+    const pct = Math.min(100, Math.round((s.usageMb / s.quotaMb) * 100));
+    el.storageSummaryText.textContent = `已用 ${s.usageMb.toFixed(1)} MB（${s.uniqueTilesCount} 張圖磚 · 配額 ${pct}%）`;
+  } else {
+    el.storageSummaryText.textContent = `已預載 ${s.uniqueTilesCount} 張圖磚（約 ${s.approxTilesMb.toFixed(1)} MB）`;
   }
 }
 

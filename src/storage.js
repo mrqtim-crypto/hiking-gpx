@@ -215,3 +215,54 @@ export async function deleteTrackAndUnusedTiles(trackId) {
     tx.onerror = () => reject(tx.error);
   });
 }
+
+/**
+ * 統計目前離線快取總容量（支援 iOS Safari StorageManager API）
+ */
+export async function getStorageUsageSummary(tracks) {
+  let uniqueTilesCount = 0;
+  const uniqueUrls = new Set();
+  let sumTrackBytes = 0;
+
+  for (const t of tracks) {
+    if (Array.isArray(t.tileKeys)) {
+      for (const k of t.tileKeys) uniqueUrls.add(k);
+    }
+    if (t.tileBytes) sumTrackBytes += t.tileBytes;
+  }
+  uniqueTilesCount = uniqueUrls.size;
+
+  let usageMb = null;
+  let quotaMb = null;
+  if (navigator.storage && typeof navigator.storage.estimate === 'function') {
+    try {
+      const est = await navigator.storage.estimate();
+      if (typeof est.usage === 'number') usageMb = est.usage / (1024 * 1024);
+      if (typeof est.quota === 'number') quotaMb = est.quota / (1024 * 1024);
+    } catch {
+      // 忽略部分瀏覽器不支援
+    }
+  }
+
+  return {
+    uniqueTilesCount,
+    approxTilesMb: sumTrackBytes / (1024 * 1024),
+    usageMb,
+    quotaMb
+  };
+}
+
+/**
+ * 僅清空所有離線魯地圖圖磚，保留已匯入的 GPX 軌跡
+ */
+export async function clearAllTileCache() {
+  if ('caches' in window) {
+    await caches.delete(TILE_CACHE_NAME);
+  }
+  const allTracks = await getAllStoredTracks();
+  for (const t of allTracks) {
+    t.tileKeys = [];
+    t.tileBytes = 0;
+    await saveStoredTrack(t);
+  }
+}
