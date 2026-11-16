@@ -46,31 +46,34 @@ export function parseGpxXml(xmlText, fallbackName = '未命名路線') {
   const nameEl = doc.querySelector('trk > name') || doc.querySelector('metadata > name') || doc.querySelector('rte > name');
   const name = (nameEl?.textContent || fallbackName).trim().replace(/\.gpx$/i, '');
 
-  // 讀取軌跡點（優先 trkpt，若無則 rtept）
-  let ptNodes = Array.from(doc.querySelectorAll('trkpt'));
-  if (ptNodes.length === 0) {
-    ptNodes = Array.from(doc.querySelectorAll('rtept'));
-  }
-  if (ptNodes.length < 2) {
-    throw new Error('GPX 檔案內沒有足夠的軌跡點');
-  }
-
+  // 讀取軌跡點（優先 trkseg 保留分段資訊，若無則 rtept）
   const points = [];
-  for (const node of ptNodes) {
-    const lat = parseFloat(node.getAttribute('lat'));
-    const lon = parseFloat(node.getAttribute('lon'));
-    if (!Number.isFinite(lat) || !Number.isFinite(lon)) continue;
-    const eleNode = node.querySelector('ele');
-    const ele = eleNode ? parseFloat(eleNode.textContent) : null;
-    points.push({
-      lat,
-      lon,
-      ele: Number.isFinite(ele) ? ele : null
-    });
+  const segmentBreakIndices = []; // 記錄每個新 trkseg 的起始點 index
+
+  const trkSegs = Array.from(doc.querySelectorAll('trkseg'));
+  if (trkSegs.length > 0) {
+    for (let sIdx = 0; sIdx < trkSegs.length; sIdx++) {
+      const segPts = Array.from(trkSegs[sIdx].querySelectorAll('trkpt'));
+      if (segPts.length === 0) continue;
+      if (points.length > 0) {
+        segmentBreakIndices.push(points.length);
+      }
+      for (const node of segPts) {
+        const pt = parseTrackPointNode(node);
+        if (pt) points.push(pt);
+      }
+    }
+  } else {
+    let ptNodes = Array.from(doc.querySelectorAll('trkpt'));
+    if (ptNodes.length === 0) ptNodes = Array.from(doc.querySelectorAll('rtept'));
+    for (const node of ptNodes) {
+      const pt = parseTrackPointNode(node);
+      if (pt) points.push(pt);
+    }
   }
 
   if (points.length < 2) {
-    throw new Error('有效的軌跡座標點不足');
+    throw new Error('GPX 檔案內沒有足夠的軌跡點');
   }
 
   // 若部分點缺乏海拔，做線性內插或補 0
@@ -100,7 +103,27 @@ export function parseGpxXml(xmlText, fallbackName = '未命名路線') {
     });
   }
 
-  return { name, points, waypoints };
+  return { name, points, waypoints, segmentBreakIndices };
+}
+
+function parseTrackPointNode(node) {
+  const lat = parseFloat(node.getAttribute('lat'));
+  const lon = parseFloat(node.getAttribute('lon'));
+  if (!Number.isFinite(lat) || !Number.isFinite(lon)) return null;
+  const eleNode = node.querySelector('ele');
+  const ele = eleNode ? parseFloat(eleNode.textContent) : null;
+  const timeNode = node.querySelector('time');
+  let timeMs = null;
+  if (timeNode?.textContent) {
+    const parsed = Date.parse(timeNode.textContent.trim());
+    if (Number.isFinite(parsed)) timeMs = parsed;
+  }
+  return {
+    lat,
+    lon,
+    ele: Number.isFinite(ele) ? ele : null,
+    timeMs
+  };
 }
 
 function fillMissingElevations(points) {
@@ -324,6 +347,111 @@ export function sampleTrackAtDist(distKm, track) {
     cumGain: a.cumGain + t * (b.cumGain - a.cumGain),
     cumLoss: a.cumLoss + t * (b.cumLoss - a.cumLoss)
   };
+}
+
+/**
+ * 偵測 GPX 是否包含自動拆分線索（台灣時間跨日 / 多段 trkseg / 山屋營地航點）
+ */
+export function detectSplitCandidates(rawTrack) {
+  const pts = rawTrack.points || [];
+  if (pts.length < 4) return { autoType: null, autoBreaks: [], stayWaypoints: [] };
+
+  // 1. 檢查台灣時區 (UTC+8) 跨日
+  const twDateKey = (ms) => {
+    const d = new Date(ms + 8 * 3600 * 1000);
+    return `${d.getUTCFullYear()}-${String(d.getUTCMonth() + 1).padStart(2, '0')}-${String(d.getUTCDate()).padStart(2, '0')}`;
+  };
+
+  const dateBreaks = [];
+  let prevDate = null;
+  for (let i = 0; i < pts.length; i++) {
+    const ms = pts[i].timeMs;
+    if (!ms) continue;
+    const key = twDateKey(ms);
+    if (prevDate && key !== prevDate && i > 1 && i < pts.length - 1) {
+      dateBreaks.push(i);
+    }
+    prevDate = key;
+  }
+
+  // 2. 檢查多段 trkseg
+  const segBreaks = (rawTrack.segmentBreakIndices || []).filter((idx) => idx > 1 && idx < pts.length - 1);
+
+  // 3. 檢查山屋 / 營地航點在軌跡上的投影索引
+  const built = buildTrackData(rawTrack);
+  const stayWaypoints = [];
+  for (const w of built.waypoints) {
+    if ((w.kind === 'hut' || w.kind === 'camp') && w.trackDistM <= 300) {
+      // 找最近點 index
+      let bestIdx = 0;
+      let bestDist = Infinity;
+      for (let i = 0; i < pts.length; i++) {
+        const d = haversineMeters(w.lat, w.lon, pts[i].lat, pts[i].lon);
+        if (d < bestDist) {
+          bestDist = d;
+          bestIdx = i;
+        }
+      }
+      if (bestIdx > 1 && bestIdx < pts.length - 2) {
+        stayWaypoints.push({
+          name: w.name,
+          icon: w.icon,
+          distKm: w.distKm,
+          ele: w.projEle,
+          pointIndex: bestIdx
+        });
+      }
+    }
+  }
+  stayWaypoints.sort((a, b) => a.pointIndex - b.pointIndex);
+
+  let autoType = null;
+  let autoBreaks = [];
+  if (dateBreaks.length > 0) {
+    autoType = 'byDate';
+    autoBreaks = dateBreaks;
+  } else if (segBreaks.length > 0) {
+    autoType = 'bySegments';
+    autoBreaks = segBreaks;
+  }
+
+  return { autoType, autoBreaks, stayWaypoints };
+}
+
+/**
+ * 依據切分點索引陣列，將一條軌跡拆成多天獨立軌跡（相鄰天重疊交界點以確保路線連續）
+ */
+export function splitRawTrackByIndices(rawTrack, breakIndices) {
+  const pts = rawTrack.points;
+  const sorted = Array.from(new Set(breakIndices))
+    .filter((idx) => idx > 0 && idx < pts.length - 1)
+    .sort((a, b) => a - b);
+
+  const ranges = [];
+  let start = 0;
+  for (const br of sorted) {
+    ranges.push([start, br]);
+    start = br;
+  }
+  ranges.push([start, pts.length - 1]);
+
+  const baseName = rawTrack.name.replace(/\s*Day\s*\d+$/i, '').trim();
+  const totalDays = ranges.length;
+
+  return ranges.map(([s, e], dayIdx) => {
+    const subPts = pts.slice(s, e + 1).map((p) => ({ ...p }));
+    // 篩選落在這天路線附近（<= 400m）的航點
+    const subWpts = (rawTrack.waypoints || []).filter((w) =>
+      subPts.some((p) => haversineMeters(w.lat, w.lon, p.lat, p.lon) <= 400)
+    );
+    return {
+      name: `${baseName} Day${dayIdx + 1}`,
+      points: subPts,
+      waypoints: subWpts,
+      reversed: false,
+      totalDays
+    };
+  });
 }
 
 /**

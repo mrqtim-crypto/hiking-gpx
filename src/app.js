@@ -8,7 +8,9 @@ import {
   buildTrackData,
   projectPointToTrack,
   sampleTrackAtDist,
-  getDemoGpxXml
+  getDemoGpxXml,
+  detectSplitCandidates,
+  splitRawTrackByIndices
 } from './gpx.js';
 import {
   getAllStoredTracks,
@@ -82,7 +84,19 @@ const el = {
   wptCardName: document.getElementById('wptCardName'),
   wptCardMeta: document.getElementById('wptCardMeta'),
   wptCardDesc: document.getElementById('wptCardDesc'),
-  btnPinAtWpt: document.getElementById('btnPinAtWpt')
+  btnPinAtWpt: document.getElementById('btnPinAtWpt'),
+
+  splitModal: document.getElementById('splitModal'),
+  btnCloseSplitModal: document.getElementById('btnCloseSplitModal'),
+  splitAutoBox: document.getElementById('splitAutoBox'),
+  splitAutoDesc: document.getElementById('splitAutoDesc'),
+  btnApplyAutoSplit: document.getElementById('btnApplyAutoSplit'),
+  splitWaypointsSection: document.getElementById('splitWaypointsSection'),
+  splitWaypointsList: document.getElementById('splitWaypointsList'),
+  splitPreviewCanvas: document.getElementById('splitPreviewCanvas'),
+  splitResultPreview: document.getElementById('splitResultPreview'),
+  btnResetSplits: document.getElementById('btnResetSplits'),
+  btnConfirmSplit: document.getElementById('btnConfirmSplit')
 };
 
 const mapCtrl = new MapCanvasController(document.getElementById('mapCanvas'), {
@@ -209,6 +223,8 @@ function bindUiEvents() {
       el.wptModal.classList.add('hidden');
     }
   });
+
+  bindSplitModalEvents();
 }
 
 /* ---------------- GPS 定位與電子羅盤 ---------------- */
@@ -435,11 +451,23 @@ async function importGpxText(xmlText, fileName, autoDownloadTiles = true) {
     name: parsed.name,
     points: parsed.points,
     waypoints: parsed.waypoints,
+    segmentBreakIndices: parsed.segmentBreakIndices || [],
     reversed: false,
     tileKeys: [],
     tileBytes: 0,
     createdAt: Date.now()
   };
+
+  // 若偵測到跨日時間戳記或多段 trkseg，詢問是否直接自動拆成多天
+  const candidates = detectSplitCandidates(stored);
+  if (candidates.autoBreaks.length > 0) {
+    const days = candidates.autoBreaks.length + 1;
+    const reason = candidates.autoType === 'byDate' ? '跨日時間紀錄' : '多段軌跡結構';
+    if (confirm(`偵測到「${stored.name}」包含 ${reason}，要直接自動拆成 ${days} 天行程並下載各自離線地圖嗎？`)) {
+      await executeSplitAndSave(stored, candidates.autoBreaks, false, autoDownloadTiles);
+      return;
+    }
+  }
 
   await saveStoredTrack(stored);
   state.storedTracks = await getAllStoredTracks();
@@ -589,6 +617,7 @@ async function renderTrackList() {
         <button class="chip-btn primary" data-act="use">${isActive ? '使用中' : '切換此路線'}</button>
         <button class="chip-btn" data-act="rename">改名</button>
         <button class="chip-btn" data-act="reverse">反轉方向</button>
+        <button class="chip-btn" data-act="split">拆分多天</button>
         <button class="chip-btn" data-act="tiles">${tileCount > 0 ? '更新離線地圖' : '下載離線地圖'}</button>
         <button class="chip-btn danger" data-act="delete">刪除</button>
       </div>
@@ -603,6 +632,9 @@ async function renderTrackList() {
     });
     card.querySelector('[data-act="reverse"]').addEventListener('click', async () => {
       await toggleTrackDirection(raw.id);
+    });
+    card.querySelector('[data-act="split"]').addEventListener('click', () => {
+      openSplitModal(raw);
     });
     card.querySelector('[data-act="tiles"]').addEventListener('click', async () => {
       if (!navigator.onLine) {
@@ -647,6 +679,233 @@ function escapeHtml(str) {
     .replace(/</g, '&lt;')
     .replace(/>/g, '&gt;')
     .replace(/"/g, '&quot;');
+}
+
+/* ---------------- 多日軌跡拆分彈窗邏輯 ---------------- */
+
+let splitSession = {
+  rawTrack: null,
+  builtTrack: null,
+  candidates: null,
+  breakIndices: []
+};
+
+function bindSplitModalEvents() {
+  el.btnCloseSplitModal.addEventListener('click', () => el.splitModal.classList.add('hidden'));
+  el.splitModal.addEventListener('click', (e) => {
+    if (e.target === el.splitModal) el.splitModal.classList.add('hidden');
+  });
+
+  el.btnResetSplits.addEventListener('click', () => {
+    splitSession.breakIndices = [];
+    renderSplitUI();
+  });
+
+  el.btnApplyAutoSplit.addEventListener('click', () => {
+    if (!splitSession.candidates) return;
+    splitSession.breakIndices = [...splitSession.candidates.autoBreaks];
+    renderSplitUI();
+  });
+
+  el.splitPreviewCanvas.addEventListener('click', (e) => {
+    if (!splitSession.builtTrack) return;
+    const rect = el.splitPreviewCanvas.getBoundingClientRect();
+    const ratio = Math.max(0.02, Math.min(0.98, (e.clientX - rect.left) / rect.width));
+    const pts = splitSession.builtTrack.points;
+    const targetDist = ratio * splitSession.builtTrack.totalDistKm;
+
+    // 找最接近 targetDist 的點 index
+    let bestIdx = 1;
+    let bestDiff = Infinity;
+    for (let i = 1; i < pts.length - 1; i++) {
+      const diff = Math.abs(pts[i].distKm - targetDist);
+      if (diff < bestDiff) {
+        bestDiff = diff;
+        bestIdx = i;
+      }
+    }
+
+    // 若點擊在既有切分點附近（距離總長 3% 內）則移除，否則新增
+    const nearExisting = splitSession.breakIndices.findIndex(
+      (idx) => Math.abs(pts[idx].distKm - targetDist) < splitSession.builtTrack.totalDistKm * 0.035
+    );
+    if (nearExisting >= 0) {
+      splitSession.breakIndices.splice(nearExisting, 1);
+    } else {
+      splitSession.breakIndices.push(bestIdx);
+      splitSession.breakIndices.sort((a, b) => a - b);
+    }
+    renderSplitUI();
+  });
+
+  el.btnConfirmSplit.addEventListener('click', async () => {
+    if (!splitSession.rawTrack || splitSession.breakIndices.length === 0) return;
+    el.splitModal.classList.add('hidden');
+    await executeSplitAndSave(splitSession.rawTrack, splitSession.breakIndices, true, true);
+  });
+}
+
+function openSplitModal(rawTrack) {
+  splitSession.rawTrack = rawTrack;
+  splitSession.builtTrack = buildTrackData({ ...rawTrack, reversed: false });
+  splitSession.candidates = detectSplitCandidates(rawTrack);
+  splitSession.breakIndices =
+    splitSession.candidates.autoBreaks.length > 0 ? [...splitSession.candidates.autoBreaks] : [];
+
+  el.splitModal.classList.remove('hidden');
+  renderSplitUI();
+}
+
+function renderSplitUI() {
+  const { candidates, builtTrack, breakIndices } = splitSession;
+  if (!builtTrack) return;
+
+  if (candidates.autoBreaks.length > 0) {
+    el.splitAutoBox.classList.remove('hidden');
+    const days = candidates.autoBreaks.length + 1;
+    el.splitAutoDesc.textContent =
+      candidates.autoType === 'byDate'
+        ? `偵測到跨日時間紀錄（建議拆成 ${days} 天）`
+        : `偵測到 ${days} 段獨立軌跡分段`;
+  } else {
+    el.splitAutoBox.classList.add('hidden');
+  }
+
+  // 山屋 / 營地候選切分點
+  if (candidates.stayWaypoints.length > 0) {
+    el.splitWaypointsSection.classList.remove('hidden');
+    el.splitWaypointsList.innerHTML = '';
+    for (const w of candidates.stayWaypoints) {
+      const selected = breakIndices.includes(w.pointIndex);
+      const chip = document.createElement('button');
+      chip.type = 'button';
+      chip.className = `split-wpt-chip ${selected ? 'selected' : ''}`;
+      chip.textContent = `${w.icon} ${w.name} (${w.distKm.toFixed(1)}km)`;
+      chip.addEventListener('click', () => {
+        const pos = splitSession.breakIndices.indexOf(w.pointIndex);
+        if (pos >= 0) splitSession.breakIndices.splice(pos, 1);
+        else {
+          splitSession.breakIndices.push(w.pointIndex);
+          splitSession.breakIndices.sort((a, b) => a - b);
+        }
+        renderSplitUI();
+      });
+      el.splitWaypointsList.appendChild(chip);
+    }
+  } else {
+    el.splitWaypointsSection.classList.add('hidden');
+  }
+
+  drawSplitPreviewCanvas();
+
+  // 顯示拆分預覽清單
+  const parts = splitRawTrackByIndices(splitSession.rawTrack, breakIndices);
+  el.splitResultPreview.innerHTML = '';
+  parts.forEach((p) => {
+    const b = buildTrackData(p);
+    const row = document.createElement('div');
+    row.className = 'split-day-row';
+    row.innerHTML = `<span>${escapeHtml(b.name)}</span><span>${b.totalDistKm.toFixed(1)} km · +${b.totalGain}m / -${b.totalLoss}m</span>`;
+    el.splitResultPreview.appendChild(row);
+  });
+
+  el.btnConfirmSplit.disabled = breakIndices.length === 0;
+  el.btnConfirmSplit.textContent =
+    breakIndices.length > 0 ? `確認拆分成 ${parts.length} 天` : '請先選擇切分點';
+}
+
+function drawSplitPreviewCanvas() {
+  const canvas = el.splitPreviewCanvas;
+  const rect = canvas.parentElement.getBoundingClientRect();
+  const dpr = Math.min(window.devicePixelRatio || 1, 2);
+  const w = Math.max(200, rect.width);
+  const h = Math.max(80, rect.height);
+  canvas.width = Math.round(w * dpr);
+  canvas.height = Math.round(h * dpr);
+
+  const ctx = canvas.getContext('2d');
+  ctx.save();
+  ctx.scale(dpr, dpr);
+  ctx.clearRect(0, 0, w, h);
+
+  const track = splitSession.builtTrack;
+  const pts = track.points;
+  const totalDist = Math.max(0.01, track.totalDistKm);
+  const eleSpan = Math.max(50, track.maxEle - track.minEle);
+  const padY = 12;
+
+  ctx.beginPath();
+  ctx.moveTo(0, h);
+  for (let i = 0; i < pts.length; i++) {
+    const x = (pts[i].distKm / totalDist) * w;
+    const y = h - padY - ((pts[i].smoothEle - track.minEle) / eleSpan) * (h - padY * 2);
+    ctx.lineTo(x, y);
+  }
+  ctx.lineTo(w, h);
+  ctx.closePath();
+  ctx.fillStyle = 'rgba(57, 255, 20, 0.25)';
+  ctx.fill();
+
+  ctx.beginPath();
+  for (let i = 0; i < pts.length; i++) {
+    const x = (pts[i].distKm / totalDist) * w;
+    const y = h - padY - ((pts[i].smoothEle - track.minEle) / eleSpan) * (h - padY * 2);
+    if (i === 0) ctx.moveTo(x, y);
+    else ctx.lineTo(x, y);
+  }
+  ctx.strokeStyle = '#39ff14';
+  ctx.lineWidth = 2;
+  ctx.stroke();
+
+  // 畫橘色切分線
+  ctx.strokeStyle = '#ff7a00';
+  ctx.lineWidth = 2;
+  for (const idx of splitSession.breakIndices) {
+    const x = (pts[idx].distKm / totalDist) * w;
+    ctx.beginPath();
+    ctx.moveTo(x, 0);
+    ctx.lineTo(x, h);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+async function executeSplitAndSave(rawTrack, breakIndices, deleteOriginal, downloadTiles) {
+  const parts = splitRawTrackByIndices(rawTrack, breakIndices);
+  const createdTracks = [];
+  const baseTs = Date.now();
+
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i];
+    const stored = {
+      id: `trk_${baseTs}_${i}_${Math.random().toString(36).slice(2, 6)}`,
+      name: p.name,
+      points: p.points,
+      waypoints: p.waypoints,
+      reversed: false,
+      tileKeys: [],
+      tileBytes: 0,
+      createdAt: baseTs + (parts.length - i) // 讓 Day 1 排在最上方
+    };
+    await saveStoredTrack(stored);
+    createdTracks.push(stored);
+  }
+
+  if (deleteOriginal && rawTrack.id) {
+    await deleteTrackAndUnusedTiles(rawTrack.id);
+  }
+
+  state.storedTracks = await getAllStoredTracks();
+  if (createdTracks.length > 0) {
+    await activateTrack(createdTracks[0].id);
+  }
+  renderTrackList();
+
+  if (downloadTiles && navigator.onLine) {
+    for (const t of createdTracks) {
+      await runTileDownload(t);
+    }
+  }
 }
 
 init();

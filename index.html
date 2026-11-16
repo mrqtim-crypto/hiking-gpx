@@ -160,6 +160,40 @@
     </div>
   </div>
 
+  <!-- 拆分多日軌跡彈窗 -->
+  <div id="splitModal" class="modal-backdrop hidden" role="dialog" aria-modal="true" aria-labelledby="splitModalTitle">
+    <div class="modal-sheet">
+      <div class="modal-header">
+        <h2 id="splitModalTitle">拆分成多天軌跡</h2>
+        <button id="btnCloseSplitModal" class="close-btn" type="button" aria-label="關閉">✕</button>
+      </div>
+
+      <div id="splitAutoBox" class="split-auto-box hidden">
+        <span id="splitAutoDesc">偵測到多日行程線索</span>
+        <button id="btnApplyAutoSplit" class="chip-btn primary" type="button">一鍵套用</button>
+      </div>
+
+      <div id="splitWaypointsSection" class="split-section hidden">
+        <div class="split-section-title">依山屋 / 營地航點切分（可複選）</div>
+        <div id="splitWaypointsList" class="split-wpt-list"></div>
+      </div>
+
+      <div class="split-section">
+        <div class="split-section-title">點擊海拔圖新增 / 移除切分點</div>
+        <div class="split-canvas-wrap">
+          <canvas id="splitPreviewCanvas"></canvas>
+        </div>
+      </div>
+
+      <div id="splitResultPreview" class="split-result-preview"></div>
+
+      <div class="split-footer">
+        <button id="btnResetSplits" class="secondary-btn" type="button">清除切分點</button>
+        <button id="btnConfirmSplit" class="primary-btn" type="button" disabled>確認拆分成 1 天</button>
+      </div>
+    </div>
+  </div>
+
   <!-- 航點詳細資訊彈窗 -->
   <div id="wptModal" class="modal-backdrop hidden" role="dialog" aria-modal="true">
     <div class="wpt-card">
