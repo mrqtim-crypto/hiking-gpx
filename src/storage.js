@@ -116,7 +116,7 @@ export function computeBoundingBoxTiles(points, paddingKm = 2.0) {
   const MAX_TILES = 1400; // 安全上限，避免超長跨區路線塞爆 iOS PWA 配額
   const urls = [];
 
-  for (const z of [12, 13, 14, 15, 16]) {
+  for (const z of [10, 11, 12, 13, 14, 15, 16]) {
     const topLeft = latLonToTile(padMaxLat, padMinLon, z);
     const botRight = latLonToTile(padMinLat, padMaxLon, z);
     const count = (botRight.x - topLeft.x + 1) * (botRight.y - topLeft.y + 1);

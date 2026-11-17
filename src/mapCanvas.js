@@ -494,6 +494,9 @@ export class MapCanvasController {
         const sy = this.height / 2 + (ty * TILE_SIZE - cy) * scaleFactor;
         if (img) {
           ctx.drawImage(img, sx, sy, drawSize + 0.5, drawSize + 0.5);
+        } else {
+          // 若目標層級尚在載入，嘗試用已快取的上一層級圖磚暫時墊底，消除縮放閃爍
+          this._drawFallbackParentTile(ctx, tileZ, tx, ty, sx, sy, drawSize);
         }
       }
     }
@@ -502,6 +505,25 @@ export class MapCanvasController {
     // 疊加微暗遮罩讓綠色軌跡與藍點更突出
     ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
     ctx.fillRect(0, 0, this.width, this.height);
+  }
+
+  _drawFallbackParentTile(ctx, z, tx, ty, sx, sy, drawSize) {
+    for (let dz = 1; dz <= 2; dz++) {
+      const pz = z - dz;
+      if (pz < MIN_ZOOM) break;
+      const factor = Math.pow(2, dz);
+      const ptx = Math.floor(tx / factor);
+      const pty = Math.floor(ty / factor);
+      const key = `${pz}/${ptx}/${pty}`;
+      const pImg = this.tileMemCache.get(key);
+      if (pImg) {
+        const subSize = TILE_SIZE / factor;
+        const subX = (tx % factor) * subSize;
+        const subY = (ty % factor) * subSize;
+        ctx.drawImage(pImg, subX, subY, subSize, subSize, sx, sy, drawSize + 0.5, drawSize + 0.5);
+        return;
+      }
+    }
   }
 
   _renderTrack(ctx) {
