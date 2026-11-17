@@ -133,7 +133,6 @@ body {
   background: var(--accent-red);
   white-space: nowrap;
   flex-shrink: 0;
-  cursor: pointer;
 }
 
 .status-actions {
@@ -371,6 +370,38 @@ body {
   border-radius: 50%;
   font-size: 11px;
   cursor: pointer;
+}
+
+/* 左下角全線/去程/回程切換按鈕 */
+.proj-fab {
+  position: absolute;
+  left: 12px;
+  bottom: 12px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  padding: 9px 14px;
+  border-radius: 999px;
+  border: 1.5px solid var(--border-subtle);
+  background: rgba(14, 15, 18, 0.9);
+  color: var(--text-primary);
+  font-size: 13px;
+  font-weight: 700;
+  cursor: pointer;
+  z-index: 10;
+  box-shadow: 0 4px 16px rgba(0, 0, 0, 0.7);
+}
+
+.proj-fab.mode-outbound {
+  border-color: var(--accent-green);
+  color: var(--accent-green);
+  background: rgba(10, 24, 10, 0.92);
+}
+
+.proj-fab.mode-return {
+  border-color: var(--accent-orange);
+  color: #ffb36b;
+  background: rgba(28, 16, 6, 0.92);
 }
 
 /* 右下角定位按鈕 */

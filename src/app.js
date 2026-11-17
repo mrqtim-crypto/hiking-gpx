@@ -55,6 +55,8 @@ const el = {
 
   btnTrackList: document.getElementById('btnTrackList'),
   btnRudyMap: document.getElementById('btnRudyMap'),
+  btnProjMode: document.getElementById('btnProjMode'),
+  projModeText: document.getElementById('projModeText'),
   btnLocate: document.getElementById('btnLocate'),
   locateBtnText: document.getElementById('locateBtnText'),
 
@@ -160,11 +162,12 @@ function bindUiEvents() {
     mapCtrl.setRudyMap(state.showRudyMap);
   });
 
-  // 點擊紅色進度徽章依序切換：全線 -> 去程 -> 回程
-  el.progressBadge.addEventListener('click', () => {
+  // 地圖左下角切換：全線 -> 去程 -> 回程
+  el.btnProjMode.addEventListener('click', () => {
     if (state.projMode === 'all') state.projMode = 'outbound';
     else if (state.projMode === 'outbound') state.projMode = 'return';
     else state.projMode = 'all';
+    updateProjModeUI();
     recalculateNavigation();
   });
 
@@ -386,17 +389,27 @@ function recalculateNavigation() {
   updatePinTooltip();
 }
 
+function updateProjModeUI() {
+  el.btnProjMode.classList.remove('mode-outbound', 'mode-return');
+  if (state.projMode === 'outbound') {
+    el.projModeText.textContent = '去程';
+    el.btnProjMode.classList.add('mode-outbound');
+  } else if (state.projMode === 'return') {
+    el.projModeText.textContent = '回程';
+    el.btnProjMode.classList.add('mode-return');
+  } else {
+    el.projModeText.textContent = '全線';
+  }
+}
+
 function updateMetricsUI() {
   const track = state.activeTrack;
-  const modePrefix =
-    state.projMode === 'outbound' ? '去程 ' : state.projMode === 'return' ? '回程 ' : '已完成 ';
 
   if (!track) {
     el.valCurEle.textContent = '--';
     el.valRemDist.textContent = '--';
     el.valRemGain.textContent = '--';
     el.valRemLoss.textContent = '--';
-    el.progressBadge.firstChild.textContent = modePrefix;
     el.progressPctText.textContent = '0%';
     el.progressBarFill.style.width = '0%';
     return;
@@ -414,7 +427,6 @@ function updateMetricsUI() {
     el.valRemDist.textContent = remDist.toFixed(1);
     el.valRemGain.textContent = `+${remGain}`;
     el.valRemLoss.textContent = `-${remLoss}`;
-    el.progressBadge.firstChild.textContent = modePrefix;
     el.progressPctText.textContent = `${pct}%`;
     el.progressBarFill.style.width = `${pct}%`;
   } else {
@@ -423,7 +435,6 @@ function updateMetricsUI() {
     el.valRemDist.textContent = track.totalDistKm.toFixed(1);
     el.valRemGain.textContent = `+${track.totalGain}`;
     el.valRemLoss.textContent = `-${track.totalLoss}`;
-    el.progressBadge.firstChild.textContent = modePrefix;
     el.progressPctText.textContent = '0%';
     el.progressBarFill.style.width = '0%';
   }
@@ -463,7 +474,9 @@ function updatePinTooltip() {
     const distLabel = deltaDist >= 0 ? `距目前 ${deltaDist.toFixed(1)} km` : `在後方 ${Math.abs(deltaDist).toFixed(1)} km`;
     const eleSign = deltaEle >= 0 ? `+${deltaEle}m` : `${deltaEle}m`;
     el.pinTooltipText.textContent = `${distLabel} · 海拔 ${pinSample.ele}m (${eleSign})`;
-    badgeText = `${deltaDist >= 0 ? '+' : '-'}${Math.abs(deltaDist).toFixed(1)}km · ${pinSample.ele}m`;
+    // 橘球上方顯示：與我的距離 ＋ 與我的海拔差距
+    const shortDist = `${deltaDist >= 0 ? '' : '後'}${Math.abs(deltaDist).toFixed(1)}km`;
+    badgeText = `${shortDist} · ${eleSign}`;
   } else {
     el.pinTooltipText.textContent = `里程 ${pinSample.distKm.toFixed(1)} km · 海拔 ${pinSample.ele}m`;
   }
@@ -534,6 +547,7 @@ async function activateTrack(trackId) {
 
   state.activeTrack = buildTrackData(raw);
   state.projMode = 'all';
+  updateProjModeUI();
   await setMeta('activeTrackId', trackId);
 
   el.emptyState.classList.add('hidden');
