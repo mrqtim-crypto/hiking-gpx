@@ -10,9 +10,7 @@ import {
   sampleTrackAtDist,
   getDemoGpxXml,
   detectSplitCandidates,
-  splitRawTrackByIndices,
-  estimateHikingMinutes,
-  formatDuration
+  splitRawTrackByIndices
 } from './gpx.js';
 import {
   getAllStoredTracks,
@@ -70,7 +68,6 @@ const el = {
   activeTrackBadge: document.getElementById('activeTrackBadge'),
   activeTrackName: document.getElementById('activeTrackName'),
   activeTrackDir: document.getElementById('activeTrackDir'),
-  activeTrackTime: document.getElementById('activeTrackTime'),
 
   pinTooltip: document.getElementById('pinTooltip'),
   pinTooltipText: document.getElementById('pinTooltipText'),
@@ -519,19 +516,14 @@ function updatePinTooltip() {
   if (isNearTrack) {
     const deltaDist = pinSample.distKm - state.gpsProjection.distKm;
     const deltaEle = Math.round(pinSample.ele - (state.gps?.altitude ?? state.gpsProjection.ele));
-    const segGain = Math.abs(pinSample.cumGain - state.gpsProjection.cumGain);
-    const segLoss = Math.abs(pinSample.cumLoss - state.gpsProjection.cumLoss);
-    const estText = formatDuration(estimateHikingMinutes(Math.abs(deltaDist), segGain, segLoss, 1.0));
-
     const distLabel = deltaDist >= 0 ? `距目前 ${deltaDist.toFixed(1)} km` : `在後方 ${Math.abs(deltaDist).toFixed(1)} km`;
     const eleSign = deltaEle >= 0 ? `+${deltaEle}m` : `${deltaEle}m`;
-    el.pinTooltipText.textContent = `${distLabel} · 海拔 ${pinSample.ele}m (${eleSign}) · 約${estText}`;
-    // 橘球上方顯示：與我的距離 ＋ 與我的海拔差距 ＋ 預估時間
+    el.pinTooltipText.textContent = `${distLabel} · 海拔 ${pinSample.ele}m (${eleSign})`;
+    // 橘球上方顯示：與我的距離 ＋ 與我的海拔差距
     const shortDist = `${deltaDist >= 0 ? '' : '後'}${Math.abs(deltaDist).toFixed(1)}km`;
-    badgeText = `${shortDist} · ${eleSign} · ${estText}`;
+    badgeText = `${shortDist} · ${eleSign}`;
   } else {
-    const estText = formatDuration(estimateHikingMinutes(pinSample.distKm, pinSample.cumGain, pinSample.cumLoss, 1.0));
-    el.pinTooltipText.textContent = `里程 ${pinSample.distKm.toFixed(1)} km · 海拔 ${pinSample.ele}m · 約${estText}`;
+    el.pinTooltipText.textContent = `里程 ${pinSample.distKm.toFixed(1)} km · 海拔 ${pinSample.ele}m`;
   }
 
   mapCtrl.setPin({ ...pinSample, badgeText });
@@ -650,13 +642,6 @@ function updateActiveTrackBadge() {
   el.activeTrackName.textContent = state.activeTrack.name;
   el.activeTrackDir.textContent = state.activeTrack.reversed ? '反向' : '正向';
   el.activeTrackDir.classList.toggle('reversed', state.activeTrack.reversed);
-  const totalMins = estimateHikingMinutes(
-    state.activeTrack.totalDistKm,
-    state.activeTrack.totalGain,
-    state.activeTrack.totalLoss,
-    1.0
-  );
-  el.activeTrackTime.textContent = `總預估 ${formatDuration(totalMins)}`;
 }
 
 async function removeTrack(trackId) {
@@ -714,14 +699,13 @@ async function renderTrackList() {
       }
     }
 
-    const totalMins = estimateHikingMinutes(built.totalDistKm, built.totalGain, built.totalLoss, 1.0);
     const card = document.createElement('div');
     card.className = `track-card ${isActive ? 'active' : ''}`;
     card.innerHTML = `
       <div class="track-card-top">
         <div>
           <div class="track-name">${escapeHtml(built.name)}</div>
-          <div class="track-stats">${built.totalDistKm.toFixed(1)} km · +${built.totalGain}m / -${built.totalLoss}m · 預估 ${formatDuration(totalMins)}</div>
+          <div class="track-stats">${built.totalDistKm.toFixed(1)} km · 爬升 +${built.totalGain}m · 下降 -${built.totalLoss}m</div>
           <div class="track-tile-status">${tileStatusText}</div>
         </div>
         <span class="dir-tag ${built.reversed ? 'reversed' : ''}">${built.reversed ? '反向' : '正向'}</span>

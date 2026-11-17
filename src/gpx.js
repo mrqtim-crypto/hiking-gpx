@@ -468,26 +468,6 @@ export function splitRawTrackByIndices(rawTrack, breakIndices) {
 }
 
 /**
- * 依據距離(km)、爬升(m)、下降(m)與腳程倍率，換算近似上河百岳步程時間（分鐘）
- * 基準係數（19 / 15 / 6）已對照上河百岳圖實測校準
- */
-export function estimateHikingMinutes(distKm, gainM, lossM, paceFactor = 1.0) {
-  const baseMins =
-    Math.max(0, distKm) * 19 +
-    (Math.max(0, gainM) / 100) * 15 +
-    (Math.max(0, lossM) / 100) * 6;
-  return Math.round(baseMins * paceFactor);
-}
-
-export function formatDuration(totalMinutes) {
-  if (!Number.isFinite(totalMinutes) || totalMinutes <= 0) return '0分';
-  const h = Math.floor(totalMinutes / 60);
-  const m = totalMinutes % 60;
-  if (h === 0) return `${m}分`;
-  return `${h}h${String(m).padStart(2, '0')}m`;
-}
-
-/**
  * 產生合歡北峰示範 GPX 文字（供初次無檔案時測試）
  */
 export function getDemoGpxXml() {
