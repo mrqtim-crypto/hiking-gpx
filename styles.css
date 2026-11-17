@@ -676,6 +676,17 @@ body {
   line-height: 1.45;
 }
 
+.app-update-row {
+  margin-top: 8px;
+  padding-top: 8px;
+  border-top: 1px solid var(--border-subtle);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  font-size: 11px;
+  color: var(--text-secondary);
+}
+
 /* 航點詳情卡片 */
 .wpt-card {
   width: calc(100% - 28px);

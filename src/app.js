@@ -82,6 +82,7 @@ const el = {
   downloadBannerPct: document.getElementById('downloadBannerPct'),
   downloadBarFill: document.getElementById('downloadBarFill'),
   storageSummaryText: document.getElementById('storageSummaryText'),
+  btnCheckUpdate: document.getElementById('btnCheckUpdate'),
 
   wptModal: document.getElementById('wptModal'),
   btnCloseWptModal: document.getElementById('btnCloseWptModal'),
@@ -154,6 +155,37 @@ function registerServiceWorker() {
   }
 }
 
+/**
+ * 一鍵更新軟體：僅更新網頁程式碼與 App 快取，完全保留 IndexedDB 軌跡與離線魯地圖圖磚
+ */
+async function forceUpdateApp() {
+  if (!navigator.onLine) {
+    alert('目前為離線狀態，請連線後再更新軟體。');
+    return;
+  }
+  el.btnCheckUpdate.disabled = true;
+  el.btnCheckUpdate.textContent = '更新中...';
+  try {
+    if ('caches' in window) {
+      const keys = await caches.keys();
+      await Promise.all(
+        keys.filter((k) => k.startsWith('hiking-gpx-app-')).map((k) => caches.delete(k))
+      );
+    }
+    if ('serviceWorker' in navigator) {
+      const reg = await navigator.serviceWorker.getRegistration();
+      if (reg) {
+        await reg.update();
+      }
+    }
+    window.location.reload();
+  } catch (err) {
+    el.btnCheckUpdate.disabled = false;
+    el.btnCheckUpdate.textContent = '一鍵更新軟體';
+    alert(`更新失敗：${err.message}`);
+  }
+}
+
 /* ---------------- UI 事件綁定 ---------------- */
 
 function bindUiEvents() {
@@ -208,6 +240,7 @@ function bindUiEvents() {
     el.gpxFileInput.click();
   });
   el.btnCloseTrackModal.addEventListener('click', closeTrackModal);
+  el.btnCheckUpdate.addEventListener('click', forceUpdateApp);
   el.trackModal.addEventListener('click', (e) => {
     if (e.target === el.trackModal) closeTrackModal();
   });
