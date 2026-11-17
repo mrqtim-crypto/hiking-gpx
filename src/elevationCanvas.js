@@ -18,9 +18,19 @@ export class ElevationCanvasController {
 
     this.pad = { top: 14, right: 14, bottom: 20, left: 42 };
     this.isDragging = false;
+    this._rafPending = false;
 
     this._bindEvents();
     this.resize();
+  }
+
+  scheduleRender() {
+    if (this._rafPending) return;
+    this._rafPending = true;
+    requestAnimationFrame(() => {
+      this._rafPending = false;
+      this.render();
+    });
   }
 
   resize() {
@@ -30,22 +40,22 @@ export class ElevationCanvasController {
     this.dpr = Math.min(window.devicePixelRatio || 1, 3);
     this.canvas.width = Math.round(this.width * this.dpr);
     this.canvas.height = Math.round(this.height * this.dpr);
-    this.render();
+    this.scheduleRender();
   }
 
   setTrack(track) {
     this.track = track;
-    this.render();
+    this.scheduleRender();
   }
 
   setCurrentDistKm(distKm) {
     this.currentDistKm = distKm;
-    this.render();
+    this.scheduleRender();
   }
 
   setPinDistKm(distKm) {
     this.pinDistKm = distKm;
-    this.render();
+    this.scheduleRender();
   }
 
   _bindEvents() {

@@ -32,6 +32,7 @@ const state = {
   showRudyMap: false,
   projMode: 'all', // 'all' (全線) | 'outbound' (去程) | 'return' (回程)
   isTracking: false,
+  isStartingTracking: false,
   watchId: null,
   compassActive: false,
   lastHeading: null,
@@ -251,10 +252,20 @@ async function startTracking() {
     alert('此裝置瀏覽器不支援 GPS 定位');
     return;
   }
+  if (state.isTracking || state.isStartingTracking) return;
+  state.isStartingTracking = true;
 
   // 在使用者點擊事件內請求 iOS 電子羅盤權限
   await requestCompassPermissionAndStart();
 
+  // 若等待授權期間使用者已關閉螢幕或取消，直接中止啟動
+  if (document.hidden || !state.isStartingTracking) {
+    state.isStartingTracking = false;
+    stopCompass();
+    return;
+  }
+
+  state.isStartingTracking = false;
   state.isTracking = true;
   el.btnLocate.classList.add('active');
   el.locateBtnText.textContent = '定位中';
@@ -295,6 +306,7 @@ async function startTracking() {
 }
 
 function stopTracking() {
+  state.isStartingTracking = false;
   if (state.watchId !== null) {
     navigator.geolocation.clearWatch(state.watchId);
     state.watchId = null;
