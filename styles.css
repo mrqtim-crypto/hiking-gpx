@@ -340,6 +340,14 @@ body {
   color: #ffb36b;
 }
 
+.time-tag {
+  font-size: 11px;
+  color: #b7ffaa;
+  font-weight: 600;
+  white-space: nowrap;
+  flex-shrink: 0;
+}
+
 /* 圖釘氣泡 */
 .pin-tooltip {
   position: absolute;
