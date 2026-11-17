@@ -181,6 +181,7 @@ export function buildTrackData(storedTrack) {
   let maxLon = -Infinity;
   let minEle = Infinity;
   let maxEle = -Infinity;
+  let peakPointIndex = 0;
 
   for (let i = 0; i < srcPts.length; i++) {
     const p = srcPts[i];
@@ -201,7 +202,10 @@ export function buildTrackData(storedTrack) {
     if (p.lon < minLon) minLon = p.lon;
     if (p.lon > maxLon) maxLon = p.lon;
     if (p.ele < minEle) minEle = p.ele;
-    if (p.ele > maxEle) maxEle = p.ele;
+    if (p.ele > maxEle) {
+      maxEle = p.ele;
+      peakPointIndex = i;
+    }
 
     points.push({
       lat: p.lat,
@@ -229,6 +233,11 @@ export function buildTrackData(storedTrack) {
     };
   });
 
+  // 若最高點位於最起點或最終點邊緣（非典型折返峰頂），以中點 50% 作為備援分界
+  if (peakPointIndex < 2 || peakPointIndex > points.length - 3) {
+    peakPointIndex = Math.floor(points.length / 2);
+  }
+
   return {
     id: storedTrack.id,
     name: storedTrack.name,
@@ -240,26 +249,30 @@ export function buildTrackData(storedTrack) {
     totalLoss,
     minEle: Math.floor(minEle),
     maxEle: Math.ceil(maxEle),
+    peakPointIndex,
     bounds: { minLat, maxLat, minLon, maxLon }
   };
 }
 
 /**
- * 計算任意經緯度到軌跡所有線段的最短投影點
+ * 計算任意經緯度到軌跡指定區間線段的最短投影點
  * 使用局部平面近似（台灣緯度約 23.5 度非常精準且運算極快）
  */
-export function projectPointToTrack(lat, lon, points) {
+export function projectPointToTrack(lat, lon, points, startIdx = 0, endIdx = points.length - 1) {
   const cosLat = Math.cos((lat * Math.PI) / 180);
   const metersPerLat = 111320;
   const metersPerLon = 111320 * cosLat;
 
-  let bestDistSq = Infinity;
-  let bestSegIdx = 0;
-  let bestT = 0;
-  let bestProjLat = points[0].lat;
-  let bestProjLon = points[0].lon;
+  const sIdx = Math.max(0, Math.min(points.length - 2, startIdx));
+  const eIdx = Math.max(sIdx + 1, Math.min(points.length - 1, endIdx));
 
-  for (let i = 0; i < points.length - 1; i++) {
+  let bestDistSq = Infinity;
+  let bestSegIdx = sIdx;
+  let bestT = 0;
+  let bestProjLat = points[sIdx].lat;
+  let bestProjLon = points[sIdx].lon;
+
+  for (let i = sIdx; i < eIdx; i++) {
     const a = points[i];
     const b = points[i + 1];
 

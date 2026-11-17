@@ -30,6 +30,7 @@ const state = {
   storedTracks: [],
   activeTrack: null,
   showRudyMap: false,
+  projMode: 'all', // 'all' (全線) | 'outbound' (去程) | 'return' (回程)
   isTracking: false,
   watchId: null,
   compassActive: false,
@@ -44,6 +45,7 @@ const state = {
 const el = {
   gpsStatusPill: document.getElementById('gpsStatusPill'),
   gpsStatusText: document.getElementById('gpsStatusText'),
+  progressBadge: document.getElementById('progressBadge'),
   progressPctText: document.getElementById('progressPctText'),
   progressBarFill: document.getElementById('progressBarFill'),
   valCurEle: document.getElementById('valCurEle'),
@@ -156,6 +158,14 @@ function bindUiEvents() {
     state.showRudyMap = !state.showRudyMap;
     el.btnRudyMap.classList.toggle('active', state.showRudyMap);
     mapCtrl.setRudyMap(state.showRudyMap);
+  });
+
+  // 點擊紅色進度徽章依序切換：全線 -> 去程 -> 回程
+  el.progressBadge.addEventListener('click', () => {
+    if (state.projMode === 'all') state.projMode = 'outbound';
+    else if (state.projMode === 'outbound') state.projMode = 'return';
+    else state.projMode = 'all';
+    recalculateNavigation();
   });
 
   el.btnLocate.addEventListener('click', () => {
@@ -347,7 +357,14 @@ function recalculateNavigation() {
   }
 
   if (state.gps) {
-    const proj = projectPointToTrack(state.gps.lat, state.gps.lon, state.activeTrack.points);
+    let startIdx = 0;
+    let endIdx = state.activeTrack.points.length - 1;
+    if (state.projMode === 'outbound') {
+      endIdx = state.activeTrack.peakPointIndex;
+    } else if (state.projMode === 'return') {
+      startIdx = state.activeTrack.peakPointIndex;
+    }
+    const proj = projectPointToTrack(state.gps.lat, state.gps.lon, state.activeTrack.points, startIdx, endIdx);
     state.gpsProjection = proj;
     eleCtrl.setCurrentDistKm(proj.distKm);
 
@@ -371,11 +388,15 @@ function recalculateNavigation() {
 
 function updateMetricsUI() {
   const track = state.activeTrack;
+  const modePrefix =
+    state.projMode === 'outbound' ? '去程 ' : state.projMode === 'return' ? '回程 ' : '已完成 ';
+
   if (!track) {
     el.valCurEle.textContent = '--';
     el.valRemDist.textContent = '--';
     el.valRemGain.textContent = '--';
     el.valRemLoss.textContent = '--';
+    el.progressBadge.firstChild.textContent = modePrefix;
     el.progressPctText.textContent = '0%';
     el.progressBarFill.style.width = '0%';
     return;
@@ -393,6 +414,7 @@ function updateMetricsUI() {
     el.valRemDist.textContent = remDist.toFixed(1);
     el.valRemGain.textContent = `+${remGain}`;
     el.valRemLoss.textContent = `-${remLoss}`;
+    el.progressBadge.firstChild.textContent = modePrefix;
     el.progressPctText.textContent = `${pct}%`;
     el.progressBarFill.style.width = `${pct}%`;
   } else {
@@ -401,6 +423,7 @@ function updateMetricsUI() {
     el.valRemDist.textContent = track.totalDistKm.toFixed(1);
     el.valRemGain.textContent = `+${track.totalGain}`;
     el.valRemLoss.textContent = `-${track.totalLoss}`;
+    el.progressBadge.firstChild.textContent = modePrefix;
     el.progressPctText.textContent = '0%';
     el.progressBarFill.style.width = '0%';
   }
@@ -510,6 +533,7 @@ async function activateTrack(trackId) {
   if (!raw) return;
 
   state.activeTrack = buildTrackData(raw);
+  state.projMode = 'all';
   await setMeta('activeTrackId', trackId);
 
   el.emptyState.classList.add('hidden');

@@ -133,6 +133,7 @@ body {
   background: var(--accent-red);
   white-space: nowrap;
   flex-shrink: 0;
+  cursor: pointer;
 }
 
 .status-actions {
