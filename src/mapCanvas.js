@@ -466,8 +466,8 @@ export class MapCanvasController {
   }
 
   _renderRudyTiles(ctx) {
-    // 依據當前縮放匹配 Z7~Z16 圖磚（Z17~Z19 使用 Z16 平滑放大）
-    const tileZ = Math.max(MIN_ZOOM, Math.min(16, Math.round(this.zoom)));
+    // 依據當前縮放匹配 Z7~Z17 圖磚（Z18~Z19 使用 Z17 平滑放大）
+    const tileZ = Math.max(MIN_ZOOM, Math.min(17, Math.round(this.zoom)));
     const scaleFactor = Math.pow(2, this.zoom - tileZ);
     const drawSize = TILE_SIZE * scaleFactor;
 
@@ -483,8 +483,8 @@ export class MapCanvasController {
     const maxIndex = Math.pow(2, tileZ) - 1;
 
     ctx.save();
-    // 壓低白底亮度，達到省電且不刺眼的暗色低眩光閱讀效果
-    ctx.globalAlpha = 0.78;
+    // 維持圖磚文字銳利度，僅適度壓低白底刺眼感
+    ctx.globalAlpha = 0.86;
     for (let tx = minTileX; tx <= maxTileX; tx++) {
       if (tx < 0 || tx > maxIndex) continue;
       for (let ty = minTileY; ty <= maxTileY; ty++) {
@@ -502,8 +502,8 @@ export class MapCanvasController {
     }
     ctx.restore();
 
-    // 疊加微暗遮罩讓綠色軌跡與藍點更突出
-    ctx.fillStyle = 'rgba(0, 0, 0, 0.25)';
+    // 疊加微暗遮罩讓綠色軌跡與藍點更突出，同時保持地名與等高線清楚
+    ctx.fillStyle = 'rgba(0, 0, 0, 0.16)';
     ctx.fillRect(0, 0, this.width, this.height);
   }
 

@@ -89,7 +89,10 @@ export function formatTileUrl(z, x, y) {
 }
 
 /**
- * 計算整條軌跡「外接矩形＋四週外擴 paddingKm」的所有魯地圖圖磚 URL
+ * 計算分層智慧離線圖磚 URL：
+ * - Z10~Z15：整條軌跡「外接矩形＋四週外擴 2km」
+ * - Z16：沿線左右 ±1.0km 走廊
+ * - Z17：沿線左右 ±0.4km 高清走廊
  */
 export function computeBoundingBoxTiles(points, paddingKm = 2.0) {
   let minLat = Infinity;
@@ -105,36 +108,65 @@ export function computeBoundingBoxTiles(points, paddingKm = 2.0) {
   }
 
   const midLat = (minLat + maxLat) / 2;
+  const cosMid = Math.max(0.2, Math.cos((midLat * Math.PI) / 180));
   const dLat = paddingKm / 111.32;
-  const dLon = paddingKm / (111.32 * Math.max(0.2, Math.cos((midLat * Math.PI) / 180)));
+  const dLon = paddingKm / (111.32 * cosMid);
 
   const padMinLat = Math.max(-85, minLat - dLat);
   const padMaxLat = Math.min(85, maxLat + dLat);
   const padMinLon = Math.max(-180, minLon - dLon);
   const padMaxLon = Math.min(180, maxLon + dLon);
 
-  const MAX_TILES = 1400; // 安全上限，避免超長跨區路線塞爆 iOS PWA 配額
-  const urls = [];
+  const MAX_TILES = 2200;
+  const urlSet = new Set();
 
-  for (const z of [10, 11, 12, 13, 14, 15, 16]) {
+  // 1. Z10~Z15：大矩形外擴 2km
+  for (const z of [10, 11, 12, 13, 14, 15]) {
     const topLeft = latLonToTile(padMaxLat, padMinLon, z);
     const botRight = latLonToTile(padMinLat, padMaxLon, z);
-    const count = (botRight.x - topLeft.x + 1) * (botRight.y - topLeft.y + 1);
-
-    // 若加上 Z16 會超過安全上限，則僅保留到 Z15 並仍保有完整大矩形
-    if (z === 16 && urls.length + count > MAX_TILES) {
-      break;
-    }
-
     for (let x = topLeft.x; x <= botRight.x; x++) {
       for (let y = topLeft.y; y <= botRight.y; y++) {
-        urls.push(formatTileUrl(z, x, y));
-        if (urls.length >= MAX_TILES) return urls;
+        urlSet.add(formatTileUrl(z, x, y));
+        if (urlSet.size >= MAX_TILES) return Array.from(urlSet);
       }
     }
   }
 
-  return urls;
+  // 2. Z16 (±1.0km) 與 Z17 (±0.4km) 沿線走廊
+  const addCorridorTiles = (z, bufferKm) => {
+    const bLat = bufferKm / 111.32;
+    const bLon = bufferKm / (111.32 * cosMid);
+    // 依圖磚邊長約 280~550m 進行適度點位取樣，避免對數萬點重複計算
+    const step = Math.max(1, Math.floor(points.length / 400));
+    for (let i = 0; i < points.length; i += step) {
+      const p = points[i];
+      const tl = latLonToTile(Math.min(85, p.lat + bLat), Math.max(-180, p.lon - bLon), z);
+      const br = latLonToTile(Math.max(-85, p.lat - bLat), Math.min(180, p.lon + bLon), z);
+      for (let x = tl.x; x <= br.x; x++) {
+        for (let y = tl.y; y <= br.y; y++) {
+          urlSet.add(formatTileUrl(z, x, y));
+          if (urlSet.size >= MAX_TILES) return;
+        }
+      }
+    }
+    // 確保終點也被涵蓋
+    const last = points[points.length - 1];
+    const tl = latLonToTile(Math.min(85, last.lat + bLat), Math.max(-180, last.lon - bLon), z);
+    const br = latLonToTile(Math.max(-85, last.lat - bLat), Math.min(180, last.lon + bLon), z);
+    for (let x = tl.x; x <= br.x; x++) {
+      for (let y = tl.y; y <= br.y; y++) {
+        urlSet.add(formatTileUrl(z, x, y));
+        if (urlSet.size >= MAX_TILES) return;
+      }
+    }
+  };
+
+  addCorridorTiles(16, 1.0);
+  if (urlSet.size < MAX_TILES) {
+    addCorridorTiles(17, 0.4);
+  }
+
+  return Array.from(urlSet);
 }
 
 /**
