@@ -515,13 +515,18 @@ function updatePinTooltip() {
 
   if (isNearTrack) {
     const deltaDist = pinSample.distKm - state.gpsProjection.distKm;
-    const deltaEle = Math.round(pinSample.ele - (state.gps?.altitude ?? state.gpsProjection.ele));
+    // 若橘點在目前位置前方：還需要爬升 = pin.cumGain - gps.cumGain，還需要下降 = pin.cumLoss - gps.cumLoss
+    const segGain = Math.max(0, Math.round(
+      deltaDist >= 0 ? pinSample.cumGain - state.gpsProjection.cumGain : state.gpsProjection.cumGain - pinSample.cumGain
+    ));
+    const segLoss = Math.max(0, Math.round(
+      deltaDist >= 0 ? pinSample.cumLoss - state.gpsProjection.cumLoss : state.gpsProjection.cumLoss - pinSample.cumLoss
+    ));
     const distLabel = deltaDist >= 0 ? `距目前 ${deltaDist.toFixed(1)} km` : `在後方 ${Math.abs(deltaDist).toFixed(1)} km`;
-    const eleSign = deltaEle >= 0 ? `+${deltaEle}m` : `${deltaEle}m`;
-    el.pinTooltipText.textContent = `${distLabel} · 海拔 ${pinSample.ele}m (${eleSign})`;
-    // 橘球上方顯示：與我的距離 ＋ 與我的海拔差距
+    el.pinTooltipText.textContent = `${distLabel} · 爬升 +${segGain}m · 下降 -${segLoss}m`;
+    // 橘球上方直接顯示：距離 · 累積爬升/下降
     const shortDist = `${deltaDist >= 0 ? '' : '後'}${Math.abs(deltaDist).toFixed(1)}km`;
-    badgeText = `${shortDist} · ${eleSign}`;
+    badgeText = `${shortDist} · +${segGain}/-${segLoss}m`;
   } else {
     el.pinTooltipText.textContent = `里程 ${pinSample.distKm.toFixed(1)} km · 海拔 ${pinSample.ele}m`;
   }
