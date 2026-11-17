@@ -411,7 +411,7 @@ export class MapCanvasController {
         const objUrl = URL.createObjectURL(blob);
         img.onload = () => {
           URL.revokeObjectURL(objUrl);
-          if (this.tileMemCache.size > 120) {
+          if (this.tileMemCache.size > 200) {
             const firstKey = this.tileMemCache.keys().next().value;
             this.tileMemCache.delete(firstKey);
           }
@@ -466,8 +466,8 @@ export class MapCanvasController {
   }
 
   _renderRudyTiles(ctx) {
-    // 優先使用 <=16 的整數層級（離線預載涵蓋 Z12~Z16）
-    const tileZ = Math.max(10, Math.min(16, Math.round(this.zoom)));
+    // 依據當前縮放匹配 Z7~Z16 圖磚（Z17~Z19 使用 Z16 平滑放大）
+    const tileZ = Math.max(MIN_ZOOM, Math.min(16, Math.round(this.zoom)));
     const scaleFactor = Math.pow(2, this.zoom - tileZ);
     const drawSize = TILE_SIZE * scaleFactor;
 
