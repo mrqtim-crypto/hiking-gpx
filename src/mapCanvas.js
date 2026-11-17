@@ -6,8 +6,8 @@ import { projectPointToTrack } from './gpx.js';
 import { TILE_CACHE_NAME, formatTileUrl } from './storage.js';
 
 const TILE_SIZE = 256;
-const MIN_ZOOM = 10;
-const MAX_ZOOM = 18;
+const MIN_ZOOM = 7;
+const MAX_ZOOM = 19;
 
 function lonToNormX(lon) {
   return (lon + 180) / 360;
