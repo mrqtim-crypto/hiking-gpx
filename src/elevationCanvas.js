@@ -192,9 +192,7 @@ export class ElevationCanvasController {
     ctx.lineWidth = 2;
     ctx.stroke();
 
-    // 4. 航點標記（只取距離軌跡 < 120m 的航點）
-    let lastLabelX = -999;
-    ctx.font = '10px -apple-system, "PingFang TC", sans-serif';
+    // 4. 航點標記（僅顯示小白點，避免中文字干擾曲線閱讀）
     for (const w of this.track.waypoints) {
       if (w.trackDistM > 150) continue;
       const wx = xForDist(w.distKm);
@@ -202,17 +200,8 @@ export class ElevationCanvasController {
 
       ctx.fillStyle = '#ffffff';
       ctx.beginPath();
-      ctx.arc(wx, wy, 2.5, 0, Math.PI * 2);
+      ctx.arc(wx, wy, 2.8, 0, Math.PI * 2);
       ctx.fill();
-
-      if (wx - lastLabelX > 44) {
-        lastLabelX = wx;
-        const shortName = w.name.length > 4 ? w.name.slice(0, 4) : w.name;
-        ctx.fillStyle = 'rgba(245, 245, 247, 0.8)';
-        ctx.textAlign = 'center';
-        ctx.textBaseline = 'bottom';
-        ctx.fillText(shortName, wx, Math.max(this.pad.top + 10, wy - 4));
-      }
     }
 
     // 5. 目前 GPS 位置垂直藍虛線
