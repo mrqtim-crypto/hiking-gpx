@@ -56,17 +56,17 @@ export class Map3DController {
         {
           id: 'bg-oled',
           type: 'background',
-          paint: { 'background-color': '#050608' }
+          paint: { 'background-color': '#10151c' }
         },
         {
           id: 'hillshade-base',
           type: 'hillshade',
           source: 'dem',
           paint: {
-            'hillshade-exaggeration': 0.65,
-            'hillshade-shadow-color': '#000000',
-            'hillshade-highlight-color': '#3a424d',
-            'hillshade-accent-color': '#181c22'
+            'hillshade-exaggeration': 0.92,
+            'hillshade-shadow-color': '#05070a',
+            'hillshade-highlight-color': '#8a9bb0',
+            'hillshade-accent-color': '#2b3542'
           }
         },
         {
@@ -77,14 +77,22 @@ export class Map3DController {
             visibility: this.showRudyMap ? 'visible' : 'none'
           },
           paint: {
-            'raster-opacity': 0.85,
-            'raster-brightness-max': 0.82
+            'raster-opacity': 0.92,
+            'raster-brightness-max': 0.95
           }
         }
       ],
+      sky: {
+        'sky-color': '#0d1826',
+        'sky-horizon-blend': 0.65,
+        'horizon-color': '#1f334a',
+        'horizon-fog-blend': 0.8,
+        'fog-color': '#121d2b',
+        'fog-ground-blend': 0.55
+      },
       terrain: {
         source: 'dem',
-        exaggeration: 1.35
+        exaggeration: 1.4
       }
     };
 
