@@ -401,7 +401,7 @@ export class MapCanvasController {
           const cached = await cache.match(url);
           if (cached) blob = await cached.blob();
         }
-        if (!blob) {
+        if (!blob && navigator.onLine) {
           const res = await fetch(url, { mode: 'cors' });
           if (res.ok) blob = await res.blob();
         }

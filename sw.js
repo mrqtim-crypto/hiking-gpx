@@ -1,4 +1,4 @@
-const APP_CACHE = 'hiking-gpx-app-v24';
+const APP_CACHE = 'hiking-gpx-app-v25';
 const TILE_CACHE = 'rudy-tiles-v1';
 
 const APP_ASSETS = [
@@ -36,20 +36,37 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = event.request.url;
 
-  // 魯地圖圖磚：優先讀離線快取，沒有再走網路
+  // 魯地圖圖磚：優先讀離線快取，沒有且在線時才走網路（離線靜默失敗避免觸發 iOS 網路警告）
   if (url.includes('tile.happyman.idv.tw/map/rudy/')) {
     event.respondWith(
       caches.open(TILE_CACHE).then((cache) =>
-        cache.match(event.request).then((cached) => cached || fetch(event.request))
+        cache.match(event.request).then((cached) => {
+          if (cached) return cached;
+          return fetch(event.request).catch(() => new Response('', { status: 404 }));
+        })
       )
     );
     return;
   }
 
-  // App Shell：Cache First（離線飛航模式秒開），並背景更新或 fallback
+  // 網頁導航請求（從主畫面冷啟動或重開時）：保證優先回傳快取的 index.html
+  if (event.request.mode === 'navigate') {
+    event.respondWith(
+      caches.open(APP_CACHE).then((cache) =>
+        cache.match('./index.html', { ignoreSearch: true }).then(
+          (cached) => cached || cache.match('./', { ignoreSearch: true }) || fetch(event.request)
+        )
+      )
+    );
+    return;
+  }
+
+  // App Shell 靜態資源：Cache First（離線飛航模式秒開）
   if (url.startsWith(self.location.origin)) {
     event.respondWith(
-      caches.match(event.request).then((cached) => cached || fetch(event.request))
+      caches.open(APP_CACHE).then((cache) =>
+        cache.match(event.request, { ignoreSearch: true }).then((cached) => cached || fetch(event.request))
+      )
     );
   }
 });
