@@ -22,6 +22,7 @@ import {
   getStorageUsageSummary
 } from './storage.js';
 import { MapCanvasController } from './mapCanvas.js';
+import { Map3DController } from './map3d.js';
 import { ElevationCanvasController } from './elevationCanvas.js';
 
 const DEFAULT_LOCATE_ZOOM = 15.5;
@@ -30,6 +31,7 @@ const state = {
   storedTracks: [],
   activeTrack: null,
   showRudyMap: false,
+  is3DMode: false,
   projMode: 'all', // 'all' (全線) | 'outbound' (去程) | 'return' (回程)
   isTracking: false,
   isStartingTracking: false,
@@ -56,6 +58,8 @@ const el = {
 
   btnTrackList: document.getElementById('btnTrackList'),
   btnRudyMap: document.getElementById('btnRudyMap'),
+  btn3DMap: document.getElementById('btn3DMap'),
+  map3dContainer: document.getElementById('map3dContainer'),
   btnProjMode: document.getElementById('btnProjMode'),
   projModeText: document.getElementById('projModeText'),
   btnLocate: document.getElementById('btnLocate'),
@@ -110,6 +114,10 @@ const mapCtrl = new MapCanvasController(document.getElementById('mapCanvas'), {
   onSelectWaypoint: (wpt) => openWaypointModal(wpt)
 });
 
+const map3dCtrl = new Map3DController(el.map3dContainer, {
+  onSelectPinDist: (distKm) => setPinByDist(distKm)
+});
+
 const eleCtrl = new ElevationCanvasController(document.getElementById('elevationCanvas'), (distKm) => {
   setPinByDist(distKm);
 });
@@ -122,6 +130,7 @@ async function init() {
 
   window.addEventListener('resize', () => {
     mapCtrl.resize();
+    map3dCtrl.resize();
     eleCtrl.resize();
   });
 
@@ -193,6 +202,13 @@ function bindUiEvents() {
     state.showRudyMap = !state.showRudyMap;
     el.btnRudyMap.classList.toggle('active', state.showRudyMap);
     mapCtrl.setRudyMap(state.showRudyMap);
+    if (state.is3DMode) {
+      map3dCtrl.setRudyMap(state.showRudyMap);
+    }
+  });
+
+  el.btn3DMap.addEventListener('click', () => {
+    toggle3DMode();
   });
 
   // 地圖左下角切換：全線 -> 去程 -> 回程
@@ -210,6 +226,9 @@ function bindUiEvents() {
     } else if (state.gps) {
       // 定位中再次點擊：回到中心與適當大小
       mapCtrl.centerOn(state.gps.lat, state.gps.lon, DEFAULT_LOCATE_ZOOM);
+      if (state.is3DMode) {
+        map3dCtrl.centerOn(state.gps.lat, state.gps.lon, DEFAULT_LOCATE_ZOOM);
+      }
     }
   });
 
@@ -317,9 +336,11 @@ async function startTracking() {
       };
 
       mapCtrl.setGps(state.gps);
+      if (state.is3DMode) map3dCtrl.setGps(state.gps);
       if (firstFix) {
         firstFix = false;
         mapCtrl.centerOn(latitude, longitude, DEFAULT_LOCATE_ZOOM);
+        if (state.is3DMode) map3dCtrl.centerOn(latitude, longitude, DEFAULT_LOCATE_ZOOM);
       }
       recalculateNavigation();
     },
@@ -499,6 +520,7 @@ function setPinByDist(distKm) {
 function clearPin() {
   state.pinDistKm = null;
   mapCtrl.setPin(null);
+  if (state.is3DMode) map3dCtrl.setPin(null);
   eleCtrl.setPinDistKm(null);
   el.pinTooltip.classList.add('hidden');
 }
@@ -531,7 +553,9 @@ function updatePinTooltip() {
     el.pinTooltipText.textContent = `里程 ${pinSample.distKm.toFixed(1)} km · 海拔 ${pinSample.ele}m`;
   }
 
-  mapCtrl.setPin({ ...pinSample, badgeText });
+  const pinObj = { ...pinSample, badgeText };
+  mapCtrl.setPin(pinObj);
+  if (state.is3DMode) map3dCtrl.setPin(pinObj);
   eleCtrl.setPinDistKm(state.pinDistKm);
   el.pinTooltip.classList.remove('hidden');
 }
@@ -606,6 +630,10 @@ async function activateTrack(trackId) {
 
   clearPin();
   mapCtrl.setTrack(state.activeTrack);
+  if (state.is3DMode) {
+    map3dCtrl.setTrack(state.activeTrack);
+    map3dCtrl.centerOn(mapCtrl.centerLat, mapCtrl.centerLon, mapCtrl.zoom);
+  }
   eleCtrl.setTrack(state.activeTrack);
   recalculateNavigation();
   renderTrackList();
@@ -773,6 +801,38 @@ function openWaypointModal(wpt) {
   el.wptCardMeta.textContent = `海拔 ${wpt.projEle} m · 里程 ${wpt.distKm.toFixed(1)} km`;
   el.wptCardDesc.textContent = wpt.desc || '（此航點無額外備註說明）';
   el.wptModal.classList.remove('hidden');
+}
+
+function toggle3DMode() {
+  if (!state.is3DMode) {
+    try {
+      el.map3dContainer.classList.remove('hidden');
+      map3dCtrl.init({
+        centerLat: mapCtrl.centerLat,
+        centerLon: mapCtrl.centerLon,
+        zoom: mapCtrl.zoom,
+        track: state.activeTrack,
+        showRudyMap: state.showRudyMap,
+        gps: state.gps,
+        heading: state.lastHeading,
+        pin: mapCtrl.pin
+      });
+      state.is3DMode = true;
+      el.btn3DMap.classList.add('active');
+    } catch (err) {
+      el.map3dContainer.classList.add('hidden');
+      alert(err.message || '無法啟動 3D 地形模式');
+    }
+  } else {
+    const view = map3dCtrl.getViewState();
+    map3dCtrl.destroy();
+    el.map3dContainer.classList.add('hidden');
+    state.is3DMode = false;
+    el.btn3DMap.classList.remove('active');
+    if (view) {
+      mapCtrl.centerOn(view.centerLat, view.centerLon, view.zoom);
+    }
+  }
 }
 
 function escapeHtml(str) {

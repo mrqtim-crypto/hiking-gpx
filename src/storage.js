@@ -7,7 +7,9 @@ const DB_VERSION = 1;
 const STORE_TRACKS = 'tracks';
 const STORE_META = 'meta';
 export const TILE_CACHE_NAME = 'rudy-tiles-v1';
+export const DEM_CACHE_NAME = 'dem-tiles-v1';
 export const RUDY_TILE_URL = 'https://tile.happyman.idv.tw/map/rudy/{z}/{x}/{y}.png';
+export const DEM_TILE_URL = 'https://tiles.mapterhorn.com/{z}/{x}/{y}.webp';
 
 function openDb() {
   return new Promise((resolve, reject) => {
@@ -88,11 +90,16 @@ export function formatTileUrl(z, x, y) {
   return RUDY_TILE_URL.replace('{z}', z).replace('{x}', x).replace('{y}', y);
 }
 
+export function formatDemUrl(z, x, y) {
+  return DEM_TILE_URL.replace('{z}', z).replace('{x}', x).replace('{y}', y);
+}
+
 /**
  * 計算分層智慧離線圖磚 URL：
- * - Z10~Z15：整條軌跡「外接矩形＋四週外擴 2km」
- * - Z16：沿線左右 ±1.0km 走廊
- * - Z17：沿線左右 ±0.4km 高清走廊
+ * - Z10~Z15 魯地圖：整條軌跡「外接矩形＋四週外擴 2km」
+ * - Z16 魯地圖：沿線左右 ±1.0km 走廊
+ * - Z17 魯地圖：沿線左右 ±0.4km 高清走廊
+ * - Z10~Z12 DEM 高程：外接矩形＋外擴 2km（供 3D 地形離線使用，僅約 4~12 張）
  */
 export function computeBoundingBoxTiles(points, paddingKm = 2.0) {
   let minLat = Infinity;
@@ -117,8 +124,19 @@ export function computeBoundingBoxTiles(points, paddingKm = 2.0) {
   const padMinLon = Math.max(-180, minLon - dLon);
   const padMaxLon = Math.min(180, maxLon + dLon);
 
-  const MAX_TILES = 2200;
+  const MAX_TILES = 2250;
   const urlSet = new Set();
+
+  // 0. Z10~Z12 DEM 3D 地形高程圖磚（優先確保 3D 離線可用）
+  for (const z of [10, 11, 12]) {
+    const topLeft = latLonToTile(padMaxLat, padMinLon, z);
+    const botRight = latLonToTile(padMinLat, padMaxLon, z);
+    for (let x = topLeft.x; x <= botRight.x; x++) {
+      for (let y = topLeft.y; y <= botRight.y; y++) {
+        urlSet.add(formatDemUrl(z, x, y));
+      }
+    }
+  }
 
   // 1. Z10~Z15：大矩形外擴 2km
   for (const z of [10, 11, 12, 13, 14, 15]) {
@@ -174,7 +192,8 @@ export function computeBoundingBoxTiles(points, paddingKm = 2.0) {
  */
 export async function downloadTilesForTrack(track, onProgress) {
   const urls = computeBoundingBoxTiles(track.points, 2.0);
-  const cache = await caches.open(TILE_CACHE_NAME);
+  const rudyCache = await caches.open(TILE_CACHE_NAME);
+  const demCache = await caches.open(DEM_CACHE_NAME);
 
   let done = 0;
   let totalBytes = 0;
@@ -186,8 +205,9 @@ export async function downloadTilesForTrack(track, onProgress) {
     while (cursor < total) {
       const idx = cursor++;
       const url = urls[idx];
+      const targetCache = url.includes('tiles.mapterhorn.com') ? demCache : rudyCache;
       try {
-        const existing = await cache.match(url);
+        const existing = await targetCache.match(url);
         if (existing) {
           const blob = await existing.clone().blob();
           totalBytes += blob.size;
@@ -197,7 +217,7 @@ export async function downloadTilesForTrack(track, onProgress) {
             const clone = res.clone();
             const blob = await clone.blob();
             totalBytes += blob.size;
-            await cache.put(url, res);
+            await targetCache.put(url, res);
           }
         }
       } catch {
@@ -234,9 +254,14 @@ export async function deleteTrackAndUnusedTiles(trackId) {
   }
 
   if (Array.isArray(target.tileKeys) && target.tileKeys.length > 0 && 'caches' in window) {
-    const cache = await caches.open(TILE_CACHE_NAME);
+    const rudyCache = await caches.open(TILE_CACHE_NAME);
+    const demCache = await caches.open(DEM_CACHE_NAME);
     const toDelete = target.tileKeys.filter((k) => !sharedSet.has(k));
-    await Promise.all(toDelete.map((url) => cache.delete(url)));
+    await Promise.all(
+      toDelete.map((url) =>
+        (url.includes('tiles.mapterhorn.com') ? demCache : rudyCache).delete(url)
+      )
+    );
   }
 
   const db = await openDb();

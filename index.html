@@ -11,7 +11,9 @@
   <title>山行 GPX — 極簡省電軌跡</title>
   <link rel="manifest" href="./manifest.webmanifest" />
   <link rel="apple-touch-icon" href="./icons/icon-192.png" />
+  <link rel="stylesheet" href="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css" />
   <link rel="stylesheet" href="./styles.css" />
+  <script defer src="https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js"></script>
 </head>
 <body>
   <div id="app">
@@ -39,6 +41,9 @@
               <line x1="16" y1="6" x2="16" y2="22"/>
             </svg>
             <span>魯地圖</span>
+          </button>
+          <button id="btn3DMap" class="icon-btn" type="button" aria-label="3D 地形切換">
+            <span>3D</span>
           </button>
         </div>
       </div>
@@ -71,6 +76,7 @@
     <!-- 中央主地圖區 -->
     <main class="map-stage" id="mapStage">
       <canvas id="mapCanvas"></canvas>
+      <div id="map3dContainer" class="map-3d-container hidden"></div>
 
       <!-- 空狀態引導（尚未載入軌跡時顯示） -->
       <div id="emptyState" class="empty-state">
@@ -163,7 +169,7 @@
         匯入軌跡會自動分層預載魯地圖（大矩形 Z10～Z15 ＋ 沿線 Z16/Z17 高清走廊）；刪除軌跡會自動清理專屬圖磚並保留共用區域。
       </div>
       <div class="app-update-row">
-        <span id="appVersionLabel">軟體版本 v25</span>
+        <span id="appVersionLabel">軟體版本 v26</span>
         <button id="btnCheckUpdate" class="chip-btn" type="button">一鍵更新軟體</button>
       </div>
     </div>

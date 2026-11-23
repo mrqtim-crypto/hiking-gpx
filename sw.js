@@ -1,5 +1,6 @@
-const APP_CACHE = 'hiking-gpx-app-v25';
+const APP_CACHE = 'hiking-gpx-app-v26';
 const TILE_CACHE = 'rudy-tiles-v1';
+const DEM_CACHE = 'dem-tiles-v1';
 
 const APP_ASSETS = [
   './',
@@ -10,9 +11,12 @@ const APP_ASSETS = [
   './src/gpx.js',
   './src/storage.js',
   './src/mapCanvas.js',
+  './src/map3d.js',
   './src/elevationCanvas.js',
   './icons/icon-192.png',
-  './icons/icon-512.png'
+  './icons/icon-512.png',
+  'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css',
+  'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js'
 ];
 
 self.addEventListener('install', (event) => {
@@ -26,7 +30,7 @@ self.addEventListener('activate', (event) => {
     caches.keys().then((keys) =>
       Promise.all(
         keys
-          .filter((k) => k !== APP_CACHE && k !== TILE_CACHE)
+          .filter((k) => k !== APP_CACHE && k !== TILE_CACHE && k !== DEM_CACHE)
           .map((k) => caches.delete(k))
       )
     ).then(() => self.clients.claim())
@@ -44,6 +48,29 @@ self.addEventListener('fetch', (event) => {
           if (cached) return cached;
           return fetch(event.request).catch(() => new Response('', { status: 404 }));
         })
+      )
+    );
+    return;
+  }
+
+  // DEM 高程圖磚（3D 地形）：優先讀離線快取，離線靜默失敗
+  if (url.includes('tiles.mapterhorn.com/')) {
+    event.respondWith(
+      caches.open(DEM_CACHE).then((cache) =>
+        cache.match(event.request).then((cached) => {
+          if (cached) return cached;
+          return fetch(event.request).catch(() => new Response('', { status: 404 }));
+        })
+      )
+    );
+    return;
+  }
+
+  // 第三方 CDN（如 MapLibre GL JS/CSS）：從 APP_CACHE 離線優先讀取
+  if (url.startsWith('https://unpkg.com/maplibre-gl@')) {
+    event.respondWith(
+      caches.open(APP_CACHE).then((cache) =>
+        cache.match(event.request).then((cached) => cached || fetch(event.request))
       )
     );
     return;
