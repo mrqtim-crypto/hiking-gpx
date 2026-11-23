@@ -1,4 +1,4 @@
-const APP_CACHE = 'hiking-gpx-app-v28';
+const APP_CACHE = 'hiking-gpx-app-v29';
 const TILE_CACHE = 'rudy-tiles-v1';
 const DEM_CACHE = 'dem-tiles-v1';
 
@@ -47,11 +47,11 @@ self.addEventListener('activate', (event) => {
 self.addEventListener('fetch', (event) => {
   const url = event.request.url;
 
-  // 魯地圖圖磚：優先讀離線快取，沒有且在線時才走網路（離線靜默失敗避免觸發 iOS 網路警告）
+  // 魯地圖圖磚：以純 URL 優先讀離線快取，沒有且在線時才走網路（離線靜默失敗）
   if (url.includes('tile.happyman.idv.tw/map/rudy/')) {
     event.respondWith(
       caches.open(TILE_CACHE).then((cache) =>
-        cache.match(event.request).then((cached) => {
+        cache.match(url).then((cached) => {
           if (cached) return cached;
           return fetch(event.request).catch(() => new Response('', { status: 404 }));
         })
@@ -60,11 +60,11 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // DEM 高程圖磚（3D 地形）：優先讀離線快取，離線靜默失敗
+  // DEM 高程圖磚（3D 地形）：以純 URL 優先讀離線快取，離線靜默失敗
   if (url.includes('tiles.mapterhorn.com/')) {
     event.respondWith(
       caches.open(DEM_CACHE).then((cache) =>
-        cache.match(event.request).then((cached) => {
+        cache.match(url).then((cached) => {
           if (cached) return cached;
           return fetch(event.request).catch(() => new Response('', { status: 404 }));
         })
@@ -73,16 +73,18 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 第三方 CDN（如 MapLibre GL JS/CSS）：從 APP_CACHE 離線優先讀取，沒有再抓並存入
+  // 第三方 CDN（如 MapLibre GL JS/CSS）：從 APP_CACHE 離線優先讀取，離線無快取時靜默回傳避免阻礙開頁
   if (url.startsWith('https://unpkg.com/maplibre-gl@')) {
     event.respondWith(
       caches.open(APP_CACHE).then((cache) =>
-        cache.match(event.request).then((cached) => {
+        cache.match(url).then((cached) => {
           if (cached) return cached;
-          return fetch(event.request).then((res) => {
-            if (res && res.ok) cache.put(event.request, res.clone());
-            return res;
-          });
+          return fetch(event.request)
+            .then((res) => {
+              if (res && res.ok) cache.put(url, res.clone());
+              return res;
+            })
+            .catch(() => new Response('', { status: 200 }));
         })
       )
     );
@@ -97,7 +99,7 @@ self.addEventListener('fetch', (event) => {
         if (c1) return c1;
         const c2 = await cache.match('./', { ignoreSearch: true });
         if (c2) return c2;
-        return fetch(event.request);
+        return fetch(event.request).catch(() => new Response('離線且尚未完成快取，請先連線開啟一次', { status: 503 }));
       })
     );
     return;
@@ -107,7 +109,9 @@ self.addEventListener('fetch', (event) => {
   if (url.startsWith(self.location.origin)) {
     event.respondWith(
       caches.open(APP_CACHE).then((cache) =>
-        cache.match(event.request, { ignoreSearch: true }).then((cached) => cached || fetch(event.request))
+        cache.match(event.request, { ignoreSearch: true }).then(
+          (cached) => cached || fetch(event.request).catch(() => new Response('', { status: 404 }))
+        )
       )
     );
   }
