@@ -1,4 +1,4 @@
-const APP_CACHE = 'hiking-gpx-app-v26';
+const APP_CACHE = 'hiking-gpx-app-v27';
 const TILE_CACHE = 'rudy-tiles-v1';
 const DEM_CACHE = 'dem-tiles-v1';
 
@@ -14,14 +14,21 @@ const APP_ASSETS = [
   './src/map3d.js',
   './src/elevationCanvas.js',
   './icons/icon-192.png',
-  './icons/icon-512.png',
+  './icons/icon-512.png'
+];
+
+const OPTIONAL_ASSETS = [
   'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.css',
   'https://unpkg.com/maplibre-gl@4.7.1/dist/maplibre-gl.js'
 ];
 
 self.addEventListener('install', (event) => {
   event.waitUntil(
-    caches.open(APP_CACHE).then((cache) => cache.addAll(APP_ASSETS)).then(() => self.skipWaiting())
+    caches.open(APP_CACHE).then(async (cache) => {
+      await cache.addAll(APP_ASSETS);
+      // 第三方 3D 引擎採非阻斷式快取，避免影響主程式安裝
+      await Promise.allSettled(OPTIONAL_ASSETS.map((u) => cache.add(u)));
+    }).then(() => self.skipWaiting())
   );
 });
 
@@ -66,24 +73,32 @@ self.addEventListener('fetch', (event) => {
     return;
   }
 
-  // 第三方 CDN（如 MapLibre GL JS/CSS）：從 APP_CACHE 離線優先讀取
+  // 第三方 CDN（如 MapLibre GL JS/CSS）：從 APP_CACHE 離線優先讀取，沒有再抓並存入
   if (url.startsWith('https://unpkg.com/maplibre-gl@')) {
     event.respondWith(
       caches.open(APP_CACHE).then((cache) =>
-        cache.match(event.request).then((cached) => cached || fetch(event.request))
+        cache.match(event.request).then((cached) => {
+          if (cached) return cached;
+          return fetch(event.request).then((res) => {
+            if (res && res.ok) cache.put(event.request, res.clone());
+            return res;
+          });
+        })
       )
     );
     return;
   }
 
-  // 網頁導航請求（從主畫面冷啟動或重開時）：保證優先回傳快取的 index.html
+  // 網頁導航請求（從主畫面冷啟動或重開時）：保證永遠回傳有效的 Response
   if (event.request.mode === 'navigate') {
     event.respondWith(
-      caches.open(APP_CACHE).then((cache) =>
-        cache.match('./index.html', { ignoreSearch: true }).then(
-          (cached) => cached || cache.match('./', { ignoreSearch: true }) || fetch(event.request)
-        )
-      )
+      caches.open(APP_CACHE).then(async (cache) => {
+        const c1 = await cache.match('./index.html', { ignoreSearch: true });
+        if (c1) return c1;
+        const c2 = await cache.match('./', { ignoreSearch: true });
+        if (c2) return c2;
+        return fetch(event.request);
+      })
     );
     return;
   }
